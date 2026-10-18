@@ -1,5 +1,6 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 pub mod ipc;
+pub mod manifest;
 pub mod store;
 
 use std::sync::Arc;
@@ -109,7 +110,19 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(IpcState { port, registry })
-        .invoke_handler(tauri::generate_handler![greet, ipc_port, workspace_load, workspace_save, workspace_set_active])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            ipc_port,
+            workspace_load,
+            workspace_save,
+            workspace_set_active,
+            manifest::manifest_load,
+            manifest::manifest_save,
+            manifest::sidebar_load,
+            manifest::sidebar_save,
+            manifest::appstate_load,
+            manifest::appstate_save
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
