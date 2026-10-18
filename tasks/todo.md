@@ -1,30 +1,30 @@
 # Todo: app-shell
 
-- [ ] S1 manifest backend (Rust)
+- [x] S1 manifest backend (Rust)
   - Acceptance: `manifest.rs` com load/save de `manifest.json`, `sidebar-layout.json`, `app-state.json` no formato Mac; 5 commands registrados; `cargo test` verde incluindo round-trip + default tolerante (entry sem `color` → `blue`)
   - Verify: `cargo test manifest` em src-tauri (com env MSVC do README)
   - Files: `src-tauri/src/manifest.rs`, `src-tauri/src/lib.rs`, `src-tauri/Cargo.toml` (se precisar)
-- [ ] S2 manifest TS + testes
+- [x] S2 manifest TS + testes
   - Acceptance: `src/lib/manifest.ts` espelha tipos Swift; `tests/app-shell.test.ts` cobre decode tolerante, ordenação topLevel+grupos, serialize V2, mapa de atalhos
   - Verify: `npm test`
   - Files: `src/lib/manifest.ts`, `tests/app-shell.test.ts`
-- [ ] S3 AppShell grid + Sidebar
+- [x] S3 AppShell grid + Sidebar
   - Acceptance: grid sidebar 230px + canvas; busca filtra; `+` abre modal (dir obrigatório); troca de workspace carrega canvas próprio e marca `workspace_set_active`; manifest persistido
   - Verify: `npm run build` + smoke `tauri dev` (2 workspaces, troca, restart preserva)
   - Files: `src/shell/AppShell.tsx`, `src/shell/Sidebar.tsx`, `src/shell/NewWorkspaceModal.tsx`, `src/shell/*.css`, `src/App.tsx` (extrai CanvasView)
-- [ ] S4 ToolPill + modos
+- [x] S4 ToolPill + modos
   - Acceptance: pill 8 ferramentas topo-centro; ferramenta ativa cria nó correspondente (File/Portal viram placeholder registrado no doc); `L` com terminal = modo conexão (cursor crosshair), `P` = portal prompt, `Esc` = select; toolbar antiga removida
   - Verify: `npm run build` + smoke (cada ferramenta cria nó; Esc sai do modo)
   - Files: `src/shell/ToolPill.tsx`, `src/App.tsx`, `src/shell/*.css`
-- [ ] S5 ZoomControls + minimap popover
+- [x] S5 ZoomControls + minimap popover
   - Acceptance: canto inferior-direito com `− % +` funcional, % clicável (reset 100%), botões camadas/minimap com popover; minimap sai do fixo
   - Verify: smoke (zoom in/out/reset, popover abre/fecha, click-to-jump)
   - Files: `src/shell/ZoomControls.tsx`, `src/App.tsx` (remove .minimap fixo), css
-- [ ] S6 ContextMenu dark + atalhos
+- [x] S6 ContextMenu dark + atalhos
   - Acceptance: right-click no nó abre menu dark (itens por tipo; Delete vermelho); Esc/clique-fora fecha; clamp no viewport; `Ctrl+W` deleta seleção, `Ctrl+±` zoom, `\` foca, `Ctrl+↑/↓` troca ws, `Ctrl+drag` duplica
   - Verify: smoke de cada atalho + menu por tipo (terminal/note/outros)
   - Files: `src/shell/ContextMenu.tsx`, `src/App.tsx`, css
-- [ ] S7 Polish + checklist
+- [x] S7 Polish + checklist
   - Acceptance: botão "abrir no editor" via opener; modal edit workspace; 7 success criteria da spec marcados contra home.png; CAPABILITY-MAP atualizado
   - Verify: review visual + `npm test` + `cargo test` + E2E CLI
   - Files: `src/shell/*`, `specs/CAPABILITY-MAP.md`, README se mudar comando
