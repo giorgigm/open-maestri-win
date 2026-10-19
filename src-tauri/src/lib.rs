@@ -127,6 +127,40 @@ fn pty_kill(terminal_id: String, state: tauri::State<'_, IpcState>) -> Result<()
     Ok(())
 }
 
+#[tauri::command]
+fn note_load(workspace_id: String, file_name: String) -> Result<String, String> {
+    let path = crate::store::notes_dir(&workspace_id).join(&file_name);
+    // path traversal guard
+    if !path.starts_with(crate::store::notes_dir(&workspace_id)) {
+        return Err("error: invalid note path".to_string());
+    }
+    std::fs::read_to_string(&path).map_err(|e| format!("error: note read: {e}"))
+}
+
+#[tauri::command]
+fn note_save(workspace_id: String, file_name: String, text: String) -> Result<(), String> {
+    let dir = crate::store::notes_dir(&workspace_id);
+    let path = dir.join(&file_name);
+    if !path.starts_with(&dir) {
+        return Err("error: invalid note path".to_string());
+    }
+    crate::store::atomic_write(&path, text.as_bytes()).map_err(|e| format!("error: note write: {e}"))
+}
+
+#[tauri::command]
+fn note_delete(workspace_id: String, file_name: String) -> Result<(), String> {
+    let dir = crate::store::notes_dir(&workspace_id);
+    let path = dir.join(&file_name);
+    if !path.starts_with(&dir) {
+        return Err("error: invalid note path".to_string());
+    }
+    match std::fs::remove_file(&path) {
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("error: note delete: {e}")),
+    }
+}
+
 pub struct IpcState {
     pub port: u16,
     #[allow(dead_code)]
@@ -159,6 +193,9 @@ pub fn run() {
             pty_write,
             pty_resize,
             pty_kill,
+            note_load,
+            note_save,
+            note_delete,
             manifest::manifest_load,
             manifest::manifest_save,
             manifest::sidebar_load,

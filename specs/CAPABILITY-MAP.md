@@ -11,7 +11,7 @@
 | `canvas-core` | pan/zoom, drag/resize/duplicate/delete, snap, seleção, rope render | `app-shell` | pronto |
 | `node-terminal` | nó terminal + modal New Terminal + presets + roles + Maestro | `canvas-core` | pronto |
 | `pty-backend` | ConPTY + scrollback + idle + ask/check (F4) | `ipc-cli` | pronto |
-| `node-note` | Raw/Formatted, rename/move-to, drag-in, note chains | `canvas-core` | — |
+| `node-note` | Raw/Formatted, rename/move-to, drag-in, note chains | `canvas-core` | pronto |
 | `connections` | fluxo tecla L, 5 tipos, animação rope | `canvas-core` | — |
 | `node-portal` | chrome browser + automação (F5 WebView2 estágio 2) | `canvas-core` | — |
 | `node-filetree` | list/grid + Git parcial como no Mac | `canvas-core` | — |

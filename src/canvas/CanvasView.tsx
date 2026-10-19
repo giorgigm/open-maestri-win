@@ -5,6 +5,7 @@ import {
   nodeVariant,
   type CanvasNode,
   type FrameRect,
+  type StickyNoteContent,
   type TerminalContent,
   type WorkspaceDocument,
 } from "../lib/workspace-schema";
@@ -12,6 +13,7 @@ import { canvasToScreen, screenToCanvas, zoomAround, type Viewport } from "../li
 import { createRope, tickRope, ropeToPath } from "../lib/rope";
 import { snapRect, type Guide } from "./snap";
 import TerminalNode from "../nodes/TerminalNode";
+import NoteNode from "../nodes/NoteNode";
 import { BUILTIN_ROLES } from "../lib/presets";
 import type { ToolId } from "../lib/manifest";
 
@@ -70,6 +72,8 @@ export interface CanvasViewProps {
   onAddNodeAt: (kind: AddKind, rect: FrameRect) => void;
   onDuplicateNode: (id: string) => { newId: string; rect: FrameRect } | null;
   onDeleteConnection: (connId: string) => void;
+  onToggleNotePreview: (id: string) => void;
+  onRenameNote: (id: string, name: string) => void;
   onNodeContextMenu: (e: React.MouseEvent, nodeId: string) => void;
   onCanvasContextMenu: (e: React.MouseEvent) => void;
   onRopeContextMenu: (e: React.MouseEvent, connId: string) => void;
@@ -84,6 +88,8 @@ export default function CanvasView({
   terminalBadges,
   onAddNodeAt,
   onDuplicateNode,
+  onToggleNotePreview,
+  onRenameNote,
   onNodeContextMenu,
   onCanvasContextMenu,
   onRopeContextMenu,
@@ -431,11 +437,19 @@ export default function CanvasView({
                 roleName={roleNameFor((n.content as { terminal: { _0: TerminalContent } }).terminal._0.assignedRoleId)}
                 workspaceId={doc.payload.id}
               />
+            ) : variant === "stickyNote" ? (
+              <NoteNode
+                node={n}
+                content={(n.content as { stickyNote: { _0: StickyNoteContent } }).stickyNote._0}
+                workspaceId={doc.payload.id}
+                onContentChange={() => {}}
+                onTogglePreview={() => onToggleNotePreview(n.id)}
+                onRename={(name) => onRenameNote(n.id, name)}
+              />
             ) : (
               <>
                 <div className="node-header">{nodeDisplayName(n.id, n.content)}</div>
                 <div className="node-body">
-                  {variant === "stickyNote" && <div className="note-placeholder">note…</div>}
                   {variant === "text" && (
                     <span>{(n.content as { text: { _0: { text: string } } }).text._0.text}</span>
                   )}

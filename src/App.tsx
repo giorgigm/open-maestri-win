@@ -17,6 +17,7 @@ import {
   nodeVariant,
   type CanvasNode,
   type FrameRect,
+  type StickyNoteContent,
   type TerminalContent,
   type WorkspaceDocument,
 } from "./lib/workspace-schema";
@@ -423,11 +424,70 @@ export default function App() {
     const d = docRef.current;
     if (!d) return;
     const gone = new Set(ids);
+    // delete underlying .md files for notes (mirrors Mac)
+    for (const n of d.payload.nodes) {
+      if (gone.has(n.id) && nodeVariant(n.content) === "stickyNote") {
+        const c = (n.content as { stickyNote: { _0: StickyNoteContent } }).stickyNote._0;
+        if (c.fileName && c.storageMode && "managed" in c.storageMode) {
+          deleteNoteFile(c.fileName);
+        }
+      }
+    }
     setDoc({
       ...d,
       payload: {
         ...d.payload,
         nodes: d.payload.nodes.filter((n) => !gone.has(n.id)),
+      },
+    });
+  };
+
+  const deleteNoteFile = (fileName: string) => {
+    const wid = activeRef.current;
+    if (!wid) return;
+    invoke("note_save", { workspaceId: wid, fileName, text: "" }).catch(() => {});
+    // empty + remove via shell: use note_delete command
+    invoke("note_delete", { workspaceId: wid, fileName }).catch(() => {});
+  };
+
+  const toggleNotePreview = (id: string) => {
+    const d = docRef.current;
+    if (!d) return;
+    setDoc({
+      ...d,
+      payload: {
+        ...d.payload,
+        nodes: d.payload.nodes.map((n) => {
+          if (n.id !== id || nodeVariant(n.content) !== "stickyNote") return n;
+          const c = (n.content as { stickyNote: { _0: StickyNoteContent } }).stickyNote._0;
+          return {
+            ...n,
+            content: { stickyNote: { _0: { ...c, isPreviewing: !c.isPreviewing } } },
+            lastModifiedAt: new Date().toISOString(),
+          };
+        }),
+      },
+    });
+  };
+
+  const renameNote = (id: string, name: string) => {
+    const d = docRef.current;
+    if (!d) return;
+    setDoc({
+      ...d,
+      payload: {
+        ...d.payload,
+        nodes: d.payload.nodes.map((n) => {
+          if (n.id !== id || nodeVariant(n.content) !== "stickyNote") return n;
+          const c = (n.content as { stickyNote: { _0: StickyNoteContent } }).stickyNote._0;
+          return {
+            ...n,
+            content: {
+              stickyNote: { _0: { ...c, fileName: `${name}.md`, hasCustomName: true } },
+            },
+            lastModifiedAt: new Date().toISOString(),
+          };
+        }),
       },
     });
   };
@@ -629,6 +689,8 @@ export default function App() {
           onAddNode={addNode}
           onAddNodeAt={handleAddNodeAt}
           terminalBadges={terminalBadges}
+          onToggleNotePreview={toggleNotePreview}
+          onRenameNote={renameNote}
           onDuplicateNode={duplicateNodeCb}
           onDeleteConnection={deleteConnection}
           onNodeContextMenu={(e, nodeId) =>

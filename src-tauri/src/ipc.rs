@@ -157,9 +157,14 @@ fn handle_note(args: &[String], terminal_id: Option<&str>, registry: &AgentRegis
             if args.len() < 3 {
                 return "error: usage: omaestri note read \"Name\"".to_string();
             }
+            // offset/limit like the Mac CLI documents (gap fixed vs Swift handler)
+            let offset = args.get(3).and_then(|o| o.parse::<usize>().ok());
+            let limit = args.get(4).and_then(|l| l.parse::<usize>().ok());
             match resolve_note_path(&ws, &args[2]) {
-                Some(p) => std::fs::read_to_string(p)
-                    .unwrap_or_else(|e| format!("error: note read failed: {e}")),
+                Some(p) => match std::fs::read_to_string(&p) {
+                    Ok(content) => with_line_range(&content, offset, limit),
+                    Err(e) => format!("error: note read failed: {e}"),
+                },
                 None => format!("error: note '{}' not found", args[2]),
             }
         }
@@ -211,8 +216,22 @@ fn handle_note(args: &[String], terminal_id: Option<&str>, registry: &AgentRegis
     }
 }
 
-fn resolve_note_path(workspace_id: &str, name: &str) -> Option<std::path::PathBuf> {
-    let dir = crate::store::notes_dir(workspace_id);
+fn with_line_range(content: &str, offset: Option<usize>, limit: Option<usize>) -> String {
+    // mirrors NoteFileManager.readWithLineRange: `[N lines total]\n1    ...`
+    let lines: Vec<&str> = content.split('\n').collect();
+    let total = lines.len();
+    let start = offset.map(|o| o.saturating_sub(1)).unwrap_or(0).min(total);
+    let end = limit.map(|l| start + l).unwrap_or(total).min(total);
+    let header = match (offset, limit) {
+        (Some(o), Some(l)) => format!("[lines {}-{} of {}]", o, o + l - 1, total),
+        _ => format!("[{} lines total]", total),
+    };
+    let numbered: Vec<String> =
+        lines[start..end].iter().enumerate().map(|(i, l)| format!("{}    {}", start + i + 1, l)).collect();
+    format!("{}\n{}", header, numbered.join("\n"))
+}
+
+fn resolve_note_path(workspace_id: &str, name: &str) -> Option<std::path::PathBuf> {    let dir = crate::store::notes_dir(workspace_id);
     let exact = dir.join(format!("{name}.md"));
     if exact.exists() {
         return Some(exact);
