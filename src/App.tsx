@@ -10,6 +10,8 @@ import WorkspaceModal from "./shell/WorkspaceModal";
 import NewTerminalModal, { type NewTerminalSpec } from "./nodes/NewTerminalModal";
 import NewPortalModal from "./nodes/NewPortalModal";
 import Settings from "./shell/Settings";
+import Floors from "./shell/Floors";
+import Routines from "./shell/Routines";
 import { defaultPreferences, mergePreferences, type Preferences } from "./lib/preferences";
 import "./shell/shell.css";
 import "./App.css";
@@ -61,6 +63,8 @@ export default function App() {
   const [ipcPort, setIpcPort] = useState(0);
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showFloors, setShowFloors] = useState(false);
+  const [showRoutines, setShowRoutines] = useState(false);
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
 
@@ -916,6 +920,8 @@ export default function App() {
           onZoom={(f) => setViewport((v) => ({ ...v, zoom: Math.min(3, Math.max(0.1, v.zoom * f)) }))}
           onReset={() => setViewport((v) => ({ ...v, zoom: 1 }))}
           onJump={(x, y) => setViewport((v) => ({ ...v, originX: x, originY: y }))}
+          onFloors={() => setShowFloors(true)}
+          onRoutines={() => setShowRoutines(true)}
         />
         <div className="om-status">{status}</div>
       </div>
@@ -937,6 +943,18 @@ export default function App() {
       )}
       {showSettings && prefs && (
         <Settings initial={prefs} onClose={() => setShowSettings(false)} onChange={(p) => setPrefs(p)} />
+      )}
+      {showFloors && activeId && <Floors workspaceId={activeId} onClose={() => setShowFloors(false)} />}
+      {showRoutines && (
+        <Routines
+          terminals={doc.payload.nodes
+            .filter((x) => nodeVariant(x.content) === "terminal")
+            .map((x) => ({
+              id: (x.content as { terminal: { _0: TerminalContent } }).terminal._0.id,
+              name: (x.content as { terminal: { _0: TerminalContent } }).terminal._0.name,
+            }))}
+          onClose={() => setShowRoutines(false)}
+        />
       )}
       {pendingTerm && prefs && (
         <NewTerminalModal

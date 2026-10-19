@@ -4,7 +4,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import { SHORTCUTS } from "../lib/manifest";
 import { mergePreferences, type Preferences } from "../lib/preferences";
 
-const TABS = ["General", "Agents", "Terminal", "Shortcuts", "Data"] as const;
+const TABS = ["General", "Agents", "Terminal", "Shortcuts", "SSH", "Data"] as const;
 
 const THEMES = ["dark", "light", "dracula", "solarized-dark", "solarized-light", "nord", "one-dark", "tokyo-night"];
 
@@ -163,6 +163,31 @@ export default function Settings({
               </div>
             ))}
             <div className="om-muted">Custom key editing lands with a future pass; defaults above are live.</div>
+          </div>
+        )}
+
+        {tab === "SSH" && (
+          <div className="om-tab-body">
+            <label className="om-check">
+              <input type="checkbox" checked={prefs.sshEnabled} onChange={(e) => set({ sshEnabled: e.currentTarget.checked })} />
+              Enable SSH workspaces (config only — tunnel ships later, like the Mac scaffold)
+            </label>
+            <label>
+              Host
+              <input value={prefs.sshHost} onChange={(e) => set({ sshHost: e.currentTarget.value })} placeholder="example.com" />
+            </label>
+            <label>
+              User
+              <input value={prefs.sshUser} onChange={(e) => set({ sshUser: e.currentTarget.value })} placeholder="user" />
+            </label>
+            <label>
+              Port
+              <input type="number" value={prefs.sshPort} onChange={(e) => set({ sshPort: parseInt(e.currentTarget.value, 10) || 22 })} />
+            </label>
+            <label>
+              Tunnel port
+              <input type="number" value={prefs.sshTunnelPort} onChange={(e) => set({ sshTunnelPort: parseInt(e.currentTarget.value, 10) || 7433 })} />
+            </label>
           </div>
         )}
 

@@ -18,6 +18,10 @@ pub fn set_pty(pty: Arc<crate::pty::PtyManager>) {
     let _ = PTY.set(pty);
 }
 
+pub fn pty() -> Option<Arc<crate::pty::PtyManager>> {
+    PTY.get().cloned()
+}
+
 /// Shared app state visible to CLI handlers (terminals registry + active workspace).
 #[derive(Debug, Default)]
 pub struct AgentRegistry {

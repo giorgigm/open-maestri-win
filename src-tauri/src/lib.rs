@@ -1,4 +1,5 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+pub mod advanced;
 pub mod fs;
 pub mod ipc;
 pub mod manifest;
@@ -207,6 +208,15 @@ pub fn run() {
             prefs::prefs_save,
             prefs::data_dir_open,
             prefs::app_reset,
+            advanced::floor_create,
+            advanced::floor_list,
+            advanced::floor_remove,
+            advanced::floor_land,
+            advanced::floor_run_hooks,
+            advanced::routine_list,
+            advanced::routine_create,
+            advanced::routine_set_active,
+            advanced::routine_delete,
             manifest::manifest_load,
             manifest::manifest_save,
             manifest::sidebar_load,

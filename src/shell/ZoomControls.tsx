@@ -9,14 +9,21 @@ interface ZoomControlsProps {
   onZoom: (f: number) => void;
   onReset: () => void;
   onJump: (x: number, y: number) => void;
+  onFloors: () => void;
+  onRoutines: () => void;
 }
 
-export default function ZoomControls({ doc, viewport, onZoom, onReset, onJump }: ZoomControlsProps) {
+export default function ZoomControls({ doc, viewport, onZoom, onReset, onJump, onFloors, onRoutines }: ZoomControlsProps) {
   const [showMap, setShowMap] = useState(false);
   const pct = Math.round(viewport.zoom * 100);
   return (
     <div className="om-zoombar">
-      <button title="Layers (soon)">⧉</button>
+      <button title="Floors" onClick={onFloors}>
+        ⧉
+      </button>
+      <button title="Routines" onClick={onRoutines}>
+        ⏱
+      </button>
       <button title="Toggle minimap" onClick={() => setShowMap((s) => !s)}>
         ▦
       </button>
