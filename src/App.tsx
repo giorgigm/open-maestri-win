@@ -9,6 +9,8 @@ import ContextMenu, { type MenuItem } from "./shell/ContextMenu";
 import WorkspaceModal from "./shell/WorkspaceModal";
 import NewTerminalModal, { type NewTerminalSpec } from "./nodes/NewTerminalModal";
 import NewPortalModal from "./nodes/NewPortalModal";
+import Settings from "./shell/Settings";
+import { defaultPreferences, mergePreferences, type Preferences } from "./lib/preferences";
 import "./shell/shell.css";
 import "./App.css";
 import {
@@ -35,8 +37,6 @@ import {
 } from "./lib/manifest";
 import { hasDup, pairKind } from "./lib/connections";
 
-const AUTOSAVE_MS = 30_000;
-
 interface MenuState {
   x: number;
   y: number;
@@ -59,6 +59,10 @@ export default function App() {
   const [modal, setModal] = useState<{ mode: "new" } | { mode: "edit"; entry: WorkspaceEntry } | null>(null);
   const [status, setStatus] = useState("loading…");
   const [ipcPort, setIpcPort] = useState(0);
+  const [prefs, setPrefs] = useState<Preferences | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const prefsRef = useRef(prefs);
+  prefsRef.current = prefs;
 
   const docRef = useRef(doc);
   const viewRef = useRef(viewport);
@@ -75,6 +79,11 @@ export default function App() {
       try {
         const port = await invoke<number>("ipc_port");
         setIpcPort(port);
+        try {
+          setPrefs(mergePreferences(await invoke<Partial<Preferences>>("prefs_load")));
+        } catch {
+          setPrefs(defaultPreferences());
+        }
         const m = await invoke<WorkspaceManifest>("manifest_load");
         const lay = await invoke<SidebarLayout>("sidebar_load");
         const st = await invoke<AppStateData>("appstate_load");
@@ -123,7 +132,7 @@ export default function App() {
     setStatus(`workspace "${decoded.payload.name}" · IPC 127.0.0.1:${port ?? ipcPort}`);
   };
 
-  // ---- save (autosave 30s + on switch) -----------------------------------------
+  // ---- save (autosave interval from prefs + on switch) ---------------------------
   const saveDoc = useCallback(
     async (d?: WorkspaceDocument | null, wsId?: string) => {
       const target = d ?? docRef.current;
@@ -150,9 +159,10 @@ export default function App() {
   );
 
   useEffect(() => {
-    const t = setInterval(() => void saveDoc(), AUTOSAVE_MS);
+    const ms = Math.max(5, prefs?.autosaveIntervalSeconds ?? 30) * 1000;
+    const t = setInterval(() => void saveDoc(), ms);
     return () => clearInterval(t);
-  }, [saveDoc]);
+  }, [saveDoc, prefs?.autosaveIntervalSeconds]);
 
   const switchWorkspace = async (id: string) => {
     if (id === activeRef.current) return;
@@ -838,6 +848,7 @@ export default function App() {
         onNew={() => setModal({ mode: "new" })}
         onEdit={(e) => setModal({ mode: "edit", entry: e })}
         onDelete={(e) => void deleteWorkspace(e)}
+        onOpenSettings={() => setShowSettings(true)}
       />
       <div className="om-canvas-wrap">
         <ToolPill active={tool} onPick={pickTool} />
@@ -865,6 +876,9 @@ export default function App() {
           onRenameNote={renameNote}
           onNavigatePortal={navigatePortal}
           onFileTreeRoot={onFileTreeRoot}
+          termFontSize={prefs?.terminalFontSize}
+          termFontFamily={prefs?.terminalFontFamily}
+          termTheme={prefs?.terminalTheme}
           onConnectNodes={createConnection}
           connectSource={connectSource}
           setConnectSource={setConnectSource}
@@ -921,7 +935,22 @@ export default function App() {
           }}
         />
       )}
-      {pendingTerm && (
+      {showSettings && prefs && (
+        <Settings initial={prefs} onClose={() => setShowSettings(false)} onChange={(p) => setPrefs(p)} />
+      )}
+      {pendingTerm && prefs && (
+        <NewTerminalModal
+          defaultDir={doc.payload.workingDirectory}
+          presets={prefs.agentPresets.filter((a) => a.isActive)}
+          roles={prefs.rolePresets.map((r) => ({ id: r.id, name: r.name, prompt: r.prompt }))}
+          onCancel={() => {
+            setPendingTerm(null);
+            setTool("select");
+          }}
+          onCreate={(spec) => createTerminalFromSpec(pendingTerm.rect, spec)}
+        />
+      )}
+      {pendingTerm && !prefs && (
         <NewTerminalModal
           defaultDir={doc.payload.workingDirectory}
           onCancel={() => {

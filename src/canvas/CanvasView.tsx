@@ -80,6 +80,9 @@ export interface CanvasViewProps {
   onRenameNote: (id: string, name: string) => void;
   onNavigatePortal: (id: string, url: string) => void;
   onFileTreeRoot: (id: string, root: string) => void;
+  termFontSize?: number;
+  termFontFamily?: string;
+  termTheme?: string;
   onNodeContextMenu: (e: React.MouseEvent, nodeId: string) => void;
   onCanvasContextMenu: (e: React.MouseEvent) => void;
   onRopeContextMenu: (e: React.MouseEvent, connId: string) => void;
@@ -102,6 +105,9 @@ export default function CanvasView({
   onRenameNote,
   onNavigatePortal,
   onFileTreeRoot,
+  termFontSize,
+  termFontFamily,
+  termTheme,
   onNodeContextMenu,
   onCanvasContextMenu,
   onRopeContextMenu,
@@ -495,6 +501,9 @@ export default function CanvasView({
                 badge={terminalBadges.get(n.id) ?? null}
                 roleName={roleNameFor((n.content as { terminal: { _0: TerminalContent } }).terminal._0.assignedRoleId)}
                 workspaceId={doc.payload.id}
+                fontSize={termFontSize}
+                fontFamily={termFontFamily}
+                theme={termTheme}
               />
             ) : variant === "stickyNote" ? (
               <NoteNode

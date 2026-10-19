@@ -5,6 +5,17 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { TerminalContent } from "../lib/workspace-schema";
 
+const THEMES: Record<string, { background: string; foreground: string }> = {
+  dark: { background: "#0c0c0e", foreground: "#e4e4e7" },
+  light: { background: "#fafafa", foreground: "#18181b" },
+  dracula: { background: "#282a36", foreground: "#f8f8f2" },
+  "solarized-dark": { background: "#002b36", foreground: "#839496" },
+  "solarized-light": { background: "#fdf6e3", foreground: "#657b83" },
+  nord: { background: "#2e3440", foreground: "#d8dee9" },
+  "one-dark": { background: "#282c34", foreground: "#abb2bf" },
+  "tokyo-night": { background: "#1a1b26", foreground: "#a9b1d6" },
+};
+
 /** Terminal node chrome: header + live xterm (ConPTY) + footer cwd. */
 export default function TerminalNode({
   content,
@@ -12,20 +23,31 @@ export default function TerminalNode({
   roleName,
   attention,
   workspaceId,
+  fontSize,
+  fontFamily,
+  theme,
 }: {
   content: TerminalContent;
   badge?: number | null;
   roleName?: string | null;
   attention?: boolean;
   workspaceId: string;
+  fontSize?: number;
+  fontFamily?: string;
+  theme?: string;
 }) {
   const divRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
+  const t = THEMES[theme ?? "dark"] ?? THEMES.dark;
 
   useEffect(() => {
     const el = divRef.current;
     if (!el) return;
-    const term = new Terminal({ fontSize: content.fontSize ?? 13, theme: { background: "#0c0c0e" } });
+    const term = new Terminal({
+      fontSize: fontSize ?? content.fontSize ?? 13,
+      fontFamily: fontFamily && fontFamily !== "system" ? fontFamily : undefined,
+      theme: { background: t.background, foreground: t.foreground },
+    });
     const fit = new FitAddon();
     term.loadAddon(fit);
     termRef.current = term;
@@ -107,6 +129,15 @@ export default function TerminalNode({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content.id]);
+
+  // live-apply theme/font changes without respawning the shell
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    term.options.fontSize = fontSize ?? content.fontSize ?? 13;
+    if (fontFamily && fontFamily !== "system") term.options.fontFamily = fontFamily;
+    term.options.theme = { background: t.background, foreground: t.foreground };
+  }, [fontSize, fontFamily, theme, t.background, t.foreground, content.fontSize]);
 
   return (
     <div className="term-node">

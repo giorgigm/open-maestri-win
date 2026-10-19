@@ -2,6 +2,7 @@
 pub mod fs;
 pub mod ipc;
 pub mod manifest;
+pub mod prefs;
 pub mod pty;
 pub mod store;
 
@@ -202,6 +203,10 @@ pub fn run() {
             fs::git_branch,
             fs::git_diff,
             fs::git_commit,
+            prefs::prefs_load,
+            prefs::prefs_save,
+            prefs::data_dir_open,
+            prefs::app_reset,
             manifest::manifest_load,
             manifest::manifest_save,
             manifest::sidebar_load,

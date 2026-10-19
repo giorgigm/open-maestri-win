@@ -14,7 +14,7 @@
 | `node-note` | Raw/Formatted, rename/move-to, drag-in, note chains | `canvas-core` | pronto |
 | `connections` | fluxo tecla L, 5 tipos, animação rope | `canvas-core` | pronto |
 | `node-portal` | chrome browser + automação (F5 WebView2 estágio 2) | `canvas-core` | pronto (estágio 1 iframe) |
-| `node-filetree` | list/grid + Git parcial como no Mac | `canvas-core` | — |
+| `node-filetree` | list/grid + Git parcial como no Mac | `canvas-core` | pronto |
 | `settings` | General/Agents/Terminal/Shortcuts/Data | `app-shell` | — |
 | `advanced` | Floors + Routines + SSH no estado parcial do Mac | `workspace-store` | — |
 

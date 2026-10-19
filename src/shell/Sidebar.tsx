@@ -10,6 +10,7 @@ interface SidebarProps {
   onNew: () => void;
   onEdit: (e: WorkspaceEntry) => void;
   onDelete: (e: WorkspaceEntry) => void;
+  onOpenSettings: () => void;
 }
 
 export default function Sidebar({
@@ -21,6 +22,7 @@ export default function Sidebar({
   onNew,
   onEdit,
   onDelete,
+  onOpenSettings,
 }: SidebarProps) {
   const [q, setQ] = useState("");
   const { ordered, grouped } = useMemo(() => orderWorkspaces(entries, layout), [entries, layout]);
@@ -90,6 +92,9 @@ export default function Sidebar({
       <div className="om-side-foot">
         <button className="om-link" onClick={() => activeId && onDelete(entries.find((e) => e.id === activeId)!)}>
           Delete workspace
+        </button>
+        <button className="om-gear" title="Settings" onClick={onOpenSettings}>
+          ⚙
         </button>
       </div>
     </aside>

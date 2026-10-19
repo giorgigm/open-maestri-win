@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AGENT_PRESETS, BUILTIN_ROLES, type AgentPreset } from "../lib/presets";
+import { AGENT_PRESETS, BUILTIN_ROLES, type AgentPreset, type RolePreset } from "../lib/presets";
 
 export interface NewTerminalSpec {
   preset: AgentPreset;
@@ -14,17 +14,28 @@ const TABS = ["Details", "Appearance", "Roles"] as const;
 
 export default function NewTerminalModal({
   defaultDir,
+  presets,
+  roles,
   onCancel,
   onCreate,
 }: {
   defaultDir: string;
+  presets?: { id: string; name: string; command: string; icon: string; agentType: string; color: string }[];
+  roles?: RolePreset[];
   onCancel: () => void;
   onCreate: (spec: NewTerminalSpec) => void;
 }) {
+  const list = (presets && presets.length > 0 ? presets : AGENT_PRESETS).map((p) => ({
+    ...p,
+    isActive: true,
+    isBuiltIn: true,
+    shellPath: "powershell.exe",
+  })) as AgentPreset[];
+  const roleList = roles ?? BUILTIN_ROLES;
   const [idx, setIdx] = useState(0);
   const [tab, setTab] = useState<(typeof TABS)[number]>("Details");
-  const [name, setName] = useState(AGENT_PRESETS[0].name);
-  const [command, setCommand] = useState(AGENT_PRESETS[0].command);
+  const [name, setName] = useState(list[0].name);
+  const [command, setCommand] = useState(list[0].command);
   const [monitor, setMonitor] = useState(true);
   const [maestro, setMaestro] = useState(false);
   const [dir, setDir] = useState(defaultDir);
@@ -32,12 +43,12 @@ export default function NewTerminalModal({
 
   const pick = (i: number) => {
     setIdx(i);
-    setName(AGENT_PRESETS[i].name);
-    setCommand(AGENT_PRESETS[i].command);
+    setName(list[i].name);
+    setCommand(list[i].command);
   };
 
   const create = () => {
-    const preset = { ...AGENT_PRESETS[idx], name: name || AGENT_PRESETS[idx].name, command };
+    const preset = { ...list[idx], name: name || list[idx].name, command };
     onCreate({
       preset,
       roleId,
@@ -54,7 +65,7 @@ export default function NewTerminalModal({
         <h2>New Terminal</h2>
         <div className="om-qs-label">Quick Start</div>
         <div className="om-preset-row">
-          {AGENT_PRESETS.map((p, i) => (
+          {list.map((p, i) => (
             <button key={p.id} className={`om-preset ${i === idx ? "on" : ""}`} onClick={() => pick(i)} title={p.command || "shell"}>
               <span className="om-preset-icon" style={{ borderColor: p.color, color: p.color }}>
                 {p.name[0]}
@@ -97,10 +108,10 @@ export default function NewTerminalModal({
         {tab === "Appearance" && (
           <div className="om-tab-body">
             <div className="om-appear">
-              <span className="om-dot" style={{ background: AGENT_PRESETS[idx].color }} />
+              <span className="om-dot" style={{ background: list[idx].color }} />
               <div>
-                <div className="om-appear-name">{AGENT_PRESETS[idx].name}</div>
-                <div className="om-appear-type">{AGENT_PRESETS[idx].agentType}</div>
+                <div className="om-appear-name">{list[idx].name}</div>
+                <div className="om-appear-type">{list[idx].agentType}</div>
               </div>
             </div>
             <div className="om-muted">Theme and font follow Terminal settings (settings module).</div>
@@ -111,7 +122,7 @@ export default function NewTerminalModal({
             <button className={`om-role ${roleId === null ? "on" : ""}`} onClick={() => setRoleId(null)}>
               No role
             </button>
-            {BUILTIN_ROLES.map((r) => (
+            {roleList.map((r) => (
               <button key={r.id} className={`om-role ${roleId === r.id ? "on" : ""}`} onClick={() => setRoleId(r.id)} title={r.prompt}>
                 {r.name}
               </button>
