@@ -7,9 +7,12 @@ import {
   type FrameRect,
   type WorkspaceDocument,
 } from "../lib/workspace-schema";
-import { canvasToScreen, zoomAround, type Viewport } from "../lib/viewport";
+import { canvasToScreen, screenToCanvas, zoomAround, type Viewport } from "../lib/viewport";
 import { createRope, tickRope, ropeToPath } from "../lib/rope";
+import { snapRect, type Guide } from "./snap";
 import type { ToolId } from "../lib/manifest";
+
+export type AddKind = "terminal" | "stickyNote" | "text" | "fileTree" | "portal";
 
 interface RopeState {
   id: string;
@@ -21,6 +24,32 @@ function nodeCenter(r: FrameRect) {
   return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
 }
 
+function minSize(variant: string): { w: number; h: number } {
+  if (variant === "terminal") return { w: 200, h: 100 };
+  if (variant === "stickyNote") return { w: 120, h: 80 };
+  return { w: 60, h: 40 };
+}
+
+type HandleDir = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
+const HANDLES: HandleDir[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+
+function applyHandle(start: FrameRect, dir: HandleDir, dx: number, dy: number, min: { w: number; h: number }): FrameRect {
+  let { x, y, w, h } = start;
+  if (dir.includes("e")) w = Math.max(min.w, start.w + dx);
+  if (dir.includes("s")) h = Math.max(min.h, start.h + dy);
+  if (dir.includes("w")) {
+    const nw = Math.max(min.w, start.w - dx);
+    x = start.x + (start.w - nw);
+    w = nw;
+  }
+  if (dir.includes("n")) {
+    const nh = Math.max(min.h, start.h - dy);
+    y = start.y + (start.h - nh);
+    h = nh;
+  }
+  return { x, y, w, h };
+}
+
 export interface CanvasViewProps {
   doc: WorkspaceDocument;
   viewport: Viewport;
@@ -28,39 +57,52 @@ export interface CanvasViewProps {
   updateNodeFrame: (id: string, r: FrameRect) => void;
   tool: ToolId;
   setTool: (t: ToolId) => void;
-  onAddNode: (kind: "terminal" | "stickyNote" | "text" | "fileTree" | "portal") => void;
+  onAddNode: (kind: AddKind) => void;
+  onAddNodeAt: (kind: AddKind, rect: FrameRect) => void;
+  onDuplicateNode: (id: string) => { newId: string; rect: FrameRect } | null;
+  onDeleteConnection: (connId: string) => void;
   onNodeContextMenu: (e: React.MouseEvent, nodeId: string) => void;
   onCanvasContextMenu: (e: React.MouseEvent) => void;
+  onRopeContextMenu: (e: React.MouseEvent, connId: string) => void;
 }
 
-/**
- * Infinite canvas: pan/zoom, nodes, rope connections, minimap.
- * Extracted verbatim from the F3 App; AppShell owns workspace + tool state.
- */
 export default function CanvasView({
   doc,
   viewport,
   setViewport,
   updateNodeFrame,
   tool,
-  onAddNode,
+  onAddNodeAt,
+  onDuplicateNode,
   onNodeContextMenu,
   onCanvasContextMenu,
+  onRopeContextMenu,
 }: CanvasViewProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [ropes, setRopes] = useState<RopeState[]>([]);
+  const [guides, setGuides] = useState<Guide[]>([]);
+  const [rubber, setRubber] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const docRef = useRef(doc);
   const viewRef = useRef(viewport);
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+  const placeRef = useRef<{ sx: number; sy: number } | null>(null);
   const spaceRef = useRef(false);
 
   docRef.current = doc;
   viewRef.current = viewport;
 
-  // expose selection for shell shortcuts
   useEffect(() => {
     (window as unknown as { __omSelection?: Set<string> }).__omSelection = selected;
   }, [selected]);
+
+  const isCreateTool = tool === "terminal" || tool === "note" || tool === "text" || tool === "file" || tool === "portal";
+  const toolKind = (): AddKind | null => {
+    if (tool === "terminal" || tool === "text") return tool;
+    if (tool === "note") return "stickyNote";
+    if (tool === "file") return "fileTree";
+    if (tool === "portal") return "portal";
+    return null;
+  };
 
   // ---- rope physics loop (60Hz) ---------------------------------------------
   useEffect(() => {
@@ -73,8 +115,7 @@ export default function CanvasView({
     const termByContent = new Map<string, CanvasNode>();
     for (const n of doc.payload.nodes) {
       if (nodeVariant(n.content) === "terminal") {
-        const inner = (n.content as { terminal: { _0: { id: string } } }).terminal._0;
-        termByContent.set(inner.id, n);
+        termByContent.set((n.content as { terminal: { _0: { id: string } } }).terminal._0.id, n);
       }
     }
     const resolved = conns.flatMap((c: { id: string; a: string; b: string }) => {
@@ -91,19 +132,19 @@ export default function CanvasView({
       const v = viewRef.current;
       const d = docRef.current;
       if (d) {
-        const byIdLive = new Map(d.payload.nodes.map((n: CanvasNode) => [n.id, n]));
+        const live = new Map(d.payload.nodes.map((n: CanvasNode) => [n.id, n]));
         const out: RopeState[] = [];
         for (const r of resolved) {
-          const na = byIdLive.get(r.na.id);
-          const nb = byIdLive.get(r.nb.id);
+          const na = live.get(r.na.id);
+          const nb = live.get(r.nb.id);
           if (!na || !nb) continue;
           const ca = nodeCenter(frameArrayToRect(na.frame));
           const cb = nodeCenter(frameArrayToRect(nb.frame));
           tickRope(r.rope, ca.x, ca.y, cb.x, cb.y);
           const pts = r.rope.points.map((p: { x: number; y: number }) => canvasToScreen(p.x, p.y, v));
-          out.push({ id: r.id, d: ropeToPath(pts), status: "idle" });
+          out.push({ id: r.id, d: ropeToPath(pts), status: endpointActive(na, nb) ? "communicating" : "idle" });
         }
-        const key = out.map((o: RopeState) => o.id + o.d).join("|");
+        const key = out.map((o: RopeState) => o.id + o.d + o.status).join("|");
         if (key !== lastOut) {
           lastOut = key;
           setRopes(out);
@@ -116,7 +157,16 @@ export default function CanvasView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc?.payload.nodes.length, doc?.payload.connections.length]);
 
-  // ---- canvas pan/zoom --------------------------------------------------------
+  function endpointActive(na: CanvasNode, nb: CanvasNode): boolean {
+    for (const n of [na, nb]) {
+      const v = nodeVariant(n.content);
+      if (v === "terminal" && (n.content as { terminal: { _0: { status: string } } }).terminal._0.status === "running") return true;
+      if (v === "portal" && (n.content as { portal: { _0: { status: string } } }).portal._0.status === "loading") return true;
+    }
+    return false;
+  }
+
+  // ---- pan / rubber-band place --------------------------------------------------
   const onWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
       const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
@@ -133,10 +183,20 @@ export default function CanvasView({
   };
 
   const onMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 1 || spaceRef.current || e.target === e.currentTarget) {
+    if (e.button === 1 || spaceRef.current) {
       dragRef.current = { sx: e.clientX, sy: e.clientY, ox: viewport.originX, oy: viewport.originY };
+      return;
+    }
+    if (e.button === 0 && e.target === e.currentTarget) {
+      if (isCreateTool) {
+        placeRef.current = { sx: e.clientX, sy: e.clientY };
+        setRubber({ x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY });
+      } else {
+        dragRef.current = { sx: e.clientX, sy: e.clientY, ox: viewport.originX, oy: viewport.originY };
+      }
     }
   };
+
   const onMouseMove = (e: React.MouseEvent) => {
     const dr = dragRef.current;
     if (dr) {
@@ -145,10 +205,40 @@ export default function CanvasView({
         originX: dr.ox - (e.clientX - dr.sx) / v.zoom,
         originY: dr.oy - (e.clientY - dr.sy) / v.zoom,
       }));
+      return;
+    }
+    if (placeRef.current) {
+      const p = placeRef.current;
+      setRubber({ x0: p.sx, y0: p.sy, x1: e.clientX, y1: e.clientY });
     }
   };
-  const onMouseUp = () => {
+
+  const onMouseUp = (e: React.MouseEvent) => {
     dragRef.current = null;
+    const p = placeRef.current;
+    placeRef.current = null;
+    if (p && rubber) {
+      const kind = toolKind();
+      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+      const a = screenToCanvas(p.sx - rect.left, p.sy - rect.top, viewRef.current);
+      const b = screenToCanvas(e.clientX - rect.left, e.clientY - rect.top, viewRef.current);
+      const w = Math.abs(b.x - a.x);
+      const h = Math.abs(b.y - a.y);
+      setRubber(null);
+      if (kind) {
+        if (Math.hypot(e.clientX - p.sx, e.clientY - p.sy) < 4) {
+          // click: default size centered at click
+          const dw = kind === "text" ? 260 : 420;
+          const dh = kind === "text" ? 80 : 300;
+          onAddNodeAt(kind, { x: a.x - dw / 2, y: a.y - dh / 2, w: dw, h: dh });
+        } else {
+          onAddNodeAt(kind, { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w, h });
+        }
+      }
+      setSelected(new Set());
+    } else {
+      setRubber(null);
+    }
   };
 
   useEffect(() => {
@@ -157,6 +247,7 @@ export default function CanvasView({
     };
     const up = (e: KeyboardEvent) => {
       if (e.code === "Space") spaceRef.current = false;
+      if (e.key === "Escape") setSelected(new Set());
     };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
@@ -166,16 +257,87 @@ export default function CanvasView({
     };
   }, []);
 
-  // click-to-place when a creation tool is active (mirrors Mac drag-to-place,
-  // simplified: click places default-size node; F-canvas-core adds drag rect)
-  const onCanvasClick = (e: React.MouseEvent) => {
-    if (e.target !== e.currentTarget) return;
-    setSelected(new Set());
-    if (tool === "terminal" || tool === "note" || tool === "text") {
-      onAddNode(tool === "note" ? "stickyNote" : tool);
-    } else if (tool === "file" || tool === "portal") {
-      onAddNode(tool === "file" ? "fileTree" : "portal");
+  // ---- node drag (multi + Ctrl-duplicate + Alt-snap) ------------------------------
+  const startNodeDrag = (e: React.MouseEvent, nodeId: string) => {
+    const d = docRef.current;
+    // Ctrl+drag duplicates first
+    let targetId = nodeId;
+    let base = new Set(selected.has(nodeId) ? selected : [nodeId]);
+    if (e.shiftKey) {
+      const next = new Set(selected);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      setSelected(next);
+      return;
     }
+    if (e.ctrlKey || e.metaKey) {
+      const dup = onDuplicateNode(nodeId);
+      if (dup) {
+        targetId = dup.newId;
+        base = new Set([dup.newId]);
+        setSelected(base);
+      }
+    } else if (!selected.has(nodeId)) {
+      base = new Set([nodeId]);
+      setSelected(base);
+    }
+    void targetId;
+    const starts = new Map<string, FrameRect>();
+    for (const id of base) {
+      const n = d.payload.nodes.find((x) => x.id === id);
+      if (n && !n.isLocked) starts.set(id, frameArrayToRect(n.frame));
+    }
+    if (starts.size === 0) return;
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const move = (me: MouseEvent) => {
+      const vv = viewRef.current;
+      const dx0 = (me.clientX - sx) / vv.zoom;
+      const dy0 = (me.clientY - sy) / vv.zoom;
+      if (me.altKey && starts.size === 1) {
+        // magnetic snap single node
+        const [id, st] = [...starts.entries()][0];
+        const cand = { ...st, x: st.x + dx0, y: st.y + dy0 };
+        const others = docRef.current.payload.nodes
+          .filter((x) => x.id !== id)
+          .map((x) => frameArrayToRect(x.frame));
+        const snap = snapRect(cand, others, 6 / vv.zoom);
+        updateNodeFrame(id, { ...cand, x: cand.x + snap.dx, y: cand.y + snap.dy });
+        setGuides(snap.guides);
+      } else {
+        setGuides([]);
+        for (const [id, st] of starts) {
+          updateNodeFrame(id, { ...st, x: st.x + dx0, y: st.y + dy0 });
+        }
+      }
+    };
+    const up = () => {
+      setGuides([]);
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
+
+  const startResize = (e: React.MouseEvent, nodeId: string, dir: HandleDir) => {
+    e.stopPropagation();
+    const n = docRef.current.payload.nodes.find((x) => x.id === nodeId);
+    if (!n) return;
+    const start = frameArrayToRect(n.frame);
+    const min = minSize(nodeVariant(n.content));
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const move = (me: MouseEvent) => {
+      const vv = viewRef.current;
+      updateNodeFrame(nodeId, applyHandle(start, dir, (me.clientX - sx) / vv.zoom, (me.clientY - sy) / vv.zoom, min));
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
   };
 
   return (
@@ -185,7 +347,6 @@ export default function CanvasView({
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
-      onClick={onCanvasClick}
       onContextMenu={(e) => {
         if (e.target === e.currentTarget) {
           e.preventDefault();
@@ -195,17 +356,46 @@ export default function CanvasView({
     >
       <svg className="rope-layer">
         {ropes.map((r) => (
-          <path key={r.id} d={r.d} className="rope" />
+          <g key={r.id}>
+            <path
+              d={r.d}
+              className="rope-hit"
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onRopeContextMenu(e, r.id);
+              }}
+            />
+            <path d={r.d} className={`rope rope-${r.status}`} />
+          </g>
         ))}
+        {guides.map((g, i) => {
+          const v = viewRef.current;
+          const a = canvasToScreen(g.orientation === "v" ? g.pos : g.from, g.orientation === "v" ? g.from : g.pos, v);
+          const b = canvasToScreen(g.orientation === "v" ? g.pos : g.to, g.orientation === "v" ? g.to : g.pos, v);
+          return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} className="om-guide" />;
+        })}
       </svg>
+      {rubber && (
+        <div
+          className="om-rubber"
+          style={{
+            left: Math.min(rubber.x0, rubber.x1),
+            top: Math.min(rubber.y0, rubber.y1),
+            width: Math.abs(rubber.x1 - rubber.x0),
+            height: Math.abs(rubber.y1 - rubber.y0),
+          }}
+        />
+      )}
       {doc.payload.nodes.map((n) => {
         const r = frameArrayToRect(n.frame);
         const s = canvasToScreen(r.x, r.y, viewport);
         const variant = nodeVariant(n.content);
+        const sel = selected.has(n.id);
         return (
           <div
             key={n.id}
-            className={`node node-${variant} ${selected.has(n.id) ? "selected" : ""}`}
+            className={`node node-${variant} ${sel ? "selected" : ""}`}
             style={{
               left: s.x,
               top: s.y,
@@ -215,23 +405,7 @@ export default function CanvasView({
             onMouseDown={(e) => {
               if (e.button === 2) return;
               e.stopPropagation();
-              setSelected(new Set([n.id]));
-              const start = frameArrayToRect(n.frame);
-              const move = (me: MouseEvent) => {
-                const v = viewRef.current;
-                if (me.ctrlKey || me.metaKey) return; // duplicate handled in S6
-                updateNodeFrame(n.id, {
-                  ...start,
-                  x: start.x + (me.clientX - e.clientX) / v.zoom,
-                  y: start.y + (me.clientY - e.clientY) / v.zoom,
-                });
-              };
-              const up = () => {
-                window.removeEventListener("mousemove", move);
-                window.removeEventListener("mouseup", up);
-              };
-              window.addEventListener("mousemove", move);
-              window.addEventListener("mouseup", up);
+              startNodeDrag(e, n.id);
             }}
             onContextMenu={(e) => {
               e.preventDefault();
@@ -251,12 +425,13 @@ export default function CanvasView({
                 <div className="note-placeholder">{variant === "fileTree" ? "file tree…" : "portal…"}</div>
               )}
             </div>
+            {sel &&
+              HANDLES.map((h) => (
+                <div key={h} className={`om-handle om-handle-${h}`} onMouseDown={(e) => startResize(e, n.id, h)} />
+              ))}
           </div>
         );
       })}
-      <div className="minimap-slot">
-        <Minimap doc={doc} viewport={viewport} onJump={(x, y) => setViewport((v) => ({ ...v, originX: x, originY: y }))} />
-      </div>
     </div>
   );
 }

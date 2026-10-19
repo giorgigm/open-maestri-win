@@ -45,6 +45,8 @@ html, body, #root {
   pointer-events: none;
 }
 
+.rope-layer .rope-hit { pointer-events: stroke; }
+
 .rope {
   fill: none;
   stroke: #a1a1aa;
@@ -63,8 +65,8 @@ html, body, #root {
 }
 
 .node.selected {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+  border: 2px dashed #3b82f6;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
 }
 
 .node-header {
@@ -73,7 +75,61 @@ html, body, #root {
   padding: 4px 8px;
   background: #fafafa;
   border-bottom: 1px solid #e4e4e7;
+  cursor: grab;
 }
+
+.rope {
+  fill: none;
+  stroke: #a1a1aa;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.rope-communicating {
+  stroke: #22c55e;
+  stroke-dasharray: none;
+}
+
+.rope-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+  pointer-events: stroke;
+}
+
+.om-guide {
+  stroke: #3b82f6;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+.om-rubber {
+  position: absolute;
+  border: 1px solid #3b82f6;
+  background: rgba(59, 130, 246, 0.08);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.om-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: white;
+  border: 1.5px solid #3b82f6;
+  border-radius: 2px;
+  z-index: 6;
+}
+
+.om-handle-nw { left: -6px; top: -6px; cursor: nwse-resize; }
+.om-handle-n { left: calc(50% - 5px); top: -6px; cursor: ns-resize; }
+.om-handle-ne { right: -6px; top: -6px; cursor: nesw-resize; }
+.om-handle-e { right: -6px; top: calc(50% - 5px); cursor: ew-resize; }
+.om-handle-se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.om-handle-s { left: calc(50% - 5px); bottom: -6px; cursor: ns-resize; }
+.om-handle-sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.om-handle-w { left: -6px; top: calc(50% - 5px); cursor: ew-resize; }
 
 .node-body {
   flex: 1;

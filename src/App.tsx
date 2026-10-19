@@ -208,19 +208,13 @@ export default function App() {
   };
 
   // ---- node ops -------------------------------------------------------------------
-  const addNode = (kind: "terminal" | "stickyNote" | "text" | "fileTree" | "portal") => {
-    const d = docRef.current;
-    if (!d) return;
-    const v = viewRef.current;
-    const cx = v.originX + 400 / v.zoom;
-    const cy = v.originY + 300 / v.zoom;
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const isSmall = kind === "text";
-    const frame = rectToFrameArray({ x: cx, y: cy, w: isSmall ? 260 : 420, h: isSmall ? 80 : 300 });
-    let content: CanvasNode["content"];
+  const buildContent = (
+    kind: "terminal" | "stickyNote" | "text" | "fileTree" | "portal",
+    d: WorkspaceDocument,
+    id: string,
+  ): CanvasNode["content"] => {
     if (kind === "terminal") {
-      content = {
+      return {
         terminal: {
           _0: {
             agentType: "generic_shell",
@@ -241,7 +235,7 @@ export default function App() {
         },
       };
     } else if (kind === "stickyNote") {
-      content = {
+      return {
         stickyNote: {
           _0: {
             color: "#FEFDE8",
@@ -254,7 +248,7 @@ export default function App() {
         },
       };
     } else if (kind === "text") {
-      content = {
+      return {
         text: {
           _0: {
             text: "New text",
@@ -267,9 +261,9 @@ export default function App() {
         },
       };
     } else if (kind === "fileTree") {
-      content = { fileTree: { _0: { name: "Files", rootPath: d.payload.workingDirectory, viewMode: "list" } } };
+      return { fileTree: { _0: { name: "Files", rootPath: d.payload.workingDirectory, viewMode: "list" } } };
     } else {
-      content = {
+      return {
         portal: {
           _0: {
             id,
@@ -283,9 +277,59 @@ export default function App() {
         },
       };
     }
-    const node: CanvasNode = { id, frame, content, zIndex: 0, isLocked: false, createdAt: now, lastModifiedAt: now };
+  };
+
+  const addNode = (kind: "terminal" | "stickyNote" | "text" | "fileTree" | "portal") => {
+    const d = docRef.current;
+    if (!d) return;
+    const v = viewRef.current;
+    const cx = v.originX + 400 / v.zoom;
+    const cy = v.originY + 300 / v.zoom;
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const isSmall = kind === "text";
+    const frame = rectToFrameArray({ x: cx, y: cy, w: isSmall ? 260 : 420, h: isSmall ? 80 : 300 });
+    const node: CanvasNode = { id, frame, content: buildContent(kind, d, id), zIndex: 0, isLocked: false, createdAt: now, lastModifiedAt: now };
     setDoc({ ...d, payload: { ...d.payload, nodes: [...d.payload.nodes, node] } });
     setTool("select");
+  };
+
+  const addNodeAt = (kind: "terminal" | "stickyNote" | "text" | "fileTree" | "portal", rect: FrameRect) => {
+    const d = docRef.current;
+    if (!d) return;
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const node: CanvasNode = { id, frame: rectToFrameArray(rect), content: buildContent(kind, d, id), zIndex: 0, isLocked: false, createdAt: now, lastModifiedAt: now };
+    setDoc({ ...d, payload: { ...d.payload, nodes: [...d.payload.nodes, node] } });
+    setTool("select");
+  };
+
+  const duplicateNodeCb = (id: string): { newId: string; rect: FrameRect } | null => {
+    const d = docRef.current;
+    if (!d) return null;
+    const src = d.payload.nodes.find((n) => n.id === id);
+    if (!src) return null;
+    const nid = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const fr = src.frame;
+    const rect: FrameRect = { x: fr[0][0] + 24, y: fr[0][1] + 24, w: fr[1][0], h: fr[1][1] };
+    const clone: CanvasNode = { ...src, id: nid, frame: rectToFrameArray(rect), createdAt: now, lastModifiedAt: now };
+    setDoc({ ...d, payload: { ...d.payload, nodes: [...d.payload.nodes, clone] } });
+    return { newId: nid, rect };
+  };
+
+  const deleteConnection = (connId: string) => {
+    const d = docRef.current;
+    if (!d) return;
+    setDoc({
+      ...d,
+      payload: {
+        ...d.payload,
+        connections: d.payload.connections.filter((c) => c.id !== connId),
+        noteConnections: d.payload.noteConnections.filter((c) => c.id !== connId),
+        portalConnections: d.payload.portalConnections.filter((c) => c.id !== connId),
+      },
+    });
   };
 
   const updateNodeFrame = (id: string, r: FrameRect) => {
@@ -490,8 +534,19 @@ export default function App() {
           tool={tool}
           setTool={setTool}
           onAddNode={addNode}
+          onAddNodeAt={addNodeAt}
+          onDuplicateNode={duplicateNodeCb}
+          onDeleteConnection={deleteConnection}
           onNodeContextMenu={(e, nodeId) =>
             setMenu({ x: e.clientX, y: e.clientY, groups: nodeMenu(nodeId), nodeId })
+          }
+          onRopeContextMenu={(e, connId) =>
+            setMenu({
+              x: e.clientX,
+              y: e.clientY,
+              groups: [[{ id: "delete-conn", label: "Delete", danger: true }]],
+              nodeId: `conn:${connId}`,
+            })
           }
           onCanvasContextMenu={(e) =>
             setMenu({
@@ -524,7 +579,9 @@ export default function App() {
           groups={menu.groups}
           onClose={() => setMenu(null)}
           onPick={(id) => {
-            if (menu.nodeId) onMenuPick(id, menu.nodeId);
+            if (menu.nodeId?.startsWith("conn:")) {
+              if (id === "delete-conn") deleteConnection(menu.nodeId.slice(5));
+            } else if (menu.nodeId) onMenuPick(id, menu.nodeId);
             else if (id === "add-terminal") addNode("terminal");
             else if (id === "add-note") addNode("stickyNote");
             else if (id === "add-text") addNode("text");
