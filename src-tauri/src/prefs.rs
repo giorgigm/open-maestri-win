@@ -177,7 +177,7 @@ pub fn prefs_load() -> Result<Preferences, String> {
 }
 
 fn merge_defaults(v: &mut serde_json::Value, def: &serde_json::Value) {
-    if let (Some vo), Some(do_)) = (v.as_object_mut(), def.as_object()) {
+    if let (Some(vo), Some(do_)) = (v.as_object_mut(), def.as_object()) {
         for (k, dv) in do_ {
             match vo.get_mut(k) {
                 Some(ev) => {
