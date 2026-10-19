@@ -94,6 +94,20 @@ fn workspace_save(workspace_id: String, doc: serde_json::Value) -> Result<(), St
 }
 
 #[tauri::command]
+fn workspace_mtime(workspace_id: String) -> Result<String, String> {
+    // lastModifiedAt inside the file (external edits via CLI change it)
+    match crate::store::load_workspace_json(&workspace_id) {
+        Ok(v) => Ok(v
+            .get("payload")
+            .and_then(|p| p.get("lastModifiedAt"))
+            .and_then(|m| m.as_str())
+            .unwrap_or("")
+            .to_string()),
+        Err(e) => Err(e),
+    }
+}
+
+#[tauri::command]
 fn workspace_set_active(workspace_id: String, state: tauri::State<'_, IpcState>) -> Result<(), String> {
     *state.registry.workspace_id.lock().unwrap() = Some(workspace_id);
     Ok(())
@@ -191,6 +205,7 @@ pub fn run() {
             ipc_port,
             workspace_load,
             workspace_save,
+            workspace_mtime,
             workspace_set_active,
             pty_spawn,
             pty_write,

@@ -136,17 +136,29 @@ export default function App() {
     setStatus(`workspace "${decoded.payload.name}" · IPC 127.0.0.1:${port ?? ipcPort}`);
   };
 
-  // ---- save (autosave interval from prefs + on switch) ---------------------------
+  // ---- save (autosave interval + merge external nodes first) ----------------------
   const saveDoc = useCallback(
     async (d?: WorkspaceDocument | null, wsId?: string) => {
       const target = d ?? docRef.current;
       const wid = wsId ?? activeRef.current;
       if (!target || !wid) return;
       const v = viewRef.current;
+      // merge: adopt nodes/connections created externally (CLI recruit/connect)
+      // so autosave never clobbers them; per-node lastModifiedAt wins.
+      let base = target;
+      try {
+        const raw = await invoke<unknown>("workspace_load", { workspaceId: wid });
+        const disk = decodeWorkspaceDocument(raw);
+        if (disk.payload.lastModifiedAt > target.payload.lastModifiedAt) {
+          base = mergeDocs(target, disk);
+        }
+      } catch {
+        /* keep memory */
+      }
       const stamped: WorkspaceDocument = {
-        ...target,
+        ...base,
         payload: {
-          ...target.payload,
+          ...base.payload,
           canvasOrigin: { x: v.originX, y: v.originY },
           canvasZoom: v.zoom,
           lastModifiedAt: new Date().toISOString(),
@@ -154,6 +166,7 @@ export default function App() {
       };
       try {
         await invoke("workspace_save", { workspaceId: wid, doc: stamped });
+        setDoc(stamped);
         setStatus(`saved ${new Date().toLocaleTimeString()} · IPC 127.0.0.1:${ipcPort}`);
       } catch (e) {
         setStatus(`save failed: ${String(e)}`);
@@ -165,8 +178,61 @@ export default function App() {
   useEffect(() => {
     const ms = Math.max(5, prefs?.autosaveIntervalSeconds ?? 30) * 1000;
     const t = setInterval(() => void saveDoc(), ms);
-    return () => clearInterval(t);
+    // external-change poll: CLI (recruit/dismiss/connect/portal) edits the file
+    // directly; reload when lastModifiedAt moved forward (5s cadence)
+    const p = setInterval(() => void pollExternal(), 5000);
+    return () => {
+      clearInterval(t);
+      clearInterval(p);
+    };
   }, [saveDoc, prefs?.autosaveIntervalSeconds]);
+
+  const pollExternal = async () => {
+    const wid = activeRef.current;
+    const cur = docRef.current;
+    if (!wid || !cur) return;
+    try {
+      const mtime = await invoke<string>("workspace_mtime", { workspaceId: wid });
+      if (mtime > cur.payload.lastModifiedAt) {
+        const raw = await invoke<unknown>("workspace_load", { workspaceId: wid });
+        const disk = decodeWorkspaceDocument(raw);
+        setDoc(mergeDocs(cur, disk));
+        setStatus(`synced external change · IPC 127.0.0.1:${ipcPort}`);
+      }
+    } catch {
+      /* ignore transient */
+    }
+  };
+
+  /** Union merge: memory wins per-node by lastModifiedAt; external-only nodes adopted. */
+  function mergeDocs(mem: WorkspaceDocument, disk: WorkspaceDocument): WorkspaceDocument {
+    const byId = new Map(mem.payload.nodes.map((n) => [n.id, n]));
+    for (const n of disk.payload.nodes) {
+      const cur = byId.get(n.id);
+      if (!cur || n.lastModifiedAt > cur.lastModifiedAt) byId.set(n.id, n);
+    }
+    const union = <T extends { id: string }>(a: T[], b: T[]): T[] => {
+      const ids = new Set(a.map((x) => x.id));
+      return [...a, ...b.filter((x) => !ids.has(x.id))];
+    };
+    return {
+      ...mem,
+      payload: {
+        ...mem.payload,
+        nodes: [...byId.values()],
+        connections: union(mem.payload.connections, disk.payload.connections),
+        noteConnections: union(mem.payload.noteConnections, disk.payload.noteConnections),
+        portalConnections: union(mem.payload.portalConnections, disk.payload.portalConnections),
+        noteToNoteConnections: union(mem.payload.noteToNoteConnections, disk.payload.noteToNoteConnections),
+        portalToPortalConnections: union(
+          mem.payload.portalToPortalConnections,
+          disk.payload.portalToPortalConnections,
+        ),
+        floors: union(mem.payload.floors, disk.payload.floors),
+        lastModifiedAt: mem.payload.lastModifiedAt,
+      },
+    };
+  }
 
   const switchWorkspace = async (id: string) => {
     if (id === activeRef.current) return;

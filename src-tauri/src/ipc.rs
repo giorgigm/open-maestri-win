@@ -93,9 +93,7 @@ pub fn route(args: &[String], terminal_id: Option<&str>, registry: &AgentRegistr
         }
         "note" => handle_note(args, terminal_id, registry),
         "portal" => handle_portal(args, terminal_id, registry),
-        "recruit" | "dismiss" | "connect" => {
-            "error: maestro mode requires a manager terminal".to_string()
-        }
+        "recruit" | "dismiss" | "connect" => handle_maestro(args, terminal_id, registry, port),
         "role" | "preset" => {
             if cmd == "preset" {
                 return "Built-in presets:\n  - claude-code (claude)\n  - codex (codex)\n  - gemini (gemini)\n  - opencode (opencode)\n  - shell (powershell)".to_string();
@@ -104,6 +102,285 @@ pub fn route(args: &[String], terminal_id: Option<&str>, registry: &AgentRegistr
         }
         "" => "error: empty command".to_string(),
         _ => format!("error: unknown command '{cmd}'. Try 'omaestri list' for available commands."),
+    }
+}
+
+fn handle_maestro(args: &[String], terminal_id: Option<&str>, registry: &AgentRegistry, _port: u16) -> String {
+    let cmd = args[0].as_str();
+    match cmd {
+        "recruit" => maestro_recruit(args, terminal_id, registry),
+        "dismiss" => maestro_dismiss(args, terminal_id, registry),
+        "connect" => maestro_connect(args, registry),
+        _ => format!("error: unknown maestro command '{cmd}'"),
+    }
+}
+
+fn maestro_caller_is_manager(registry: &AgentRegistry, ws: &str, tid: &str) -> Result<String, String> {
+    let doc = crate::store::load_workspace_json(ws).map_err(|e| format!("error: {e}"))?;
+    let nodes = doc.get("payload").and_then(|p| p.get("nodes")).and_then(|n| n.as_array());
+    let Some(nodes) = nodes else { return Err("error: invalid workspace".to_string()) };
+    for n in nodes {
+        let content = n.get("content").and_then(|c| c.get("terminal")).and_then(|t| t.get("_0"));
+        if let Some(t) = content {
+            let cid = t.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let nid = n.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            if cid == tid || nid == tid {
+                if t.get("isManager").and_then(|v| v.as_bool()) == Some(true) {
+                    return Ok(t.get("workingDirectory").and_then(|v| v.as_str()).unwrap_or("").to_string());
+                }
+                return Err("error: this terminal is not in Maestro mode. Enable Maestro mode when creating the terminal.".to_string());
+            }
+        }
+    }
+    let map = registry.terminals.lock().unwrap();
+    if !map.contains_key(tid) {
+        return Err("error: recruit can only be called from a Maestro terminal".to_string());
+    }
+    Err("error: this terminal is not in Maestro mode. Enable Maestro mode when creating the terminal.".to_string())
+}
+
+fn parse_flags(args: &[String]) -> (String, String, String) {
+    let mut preset = "generic_shell".to_string();
+    let mut role = String::new();
+    let mut command = String::new();
+    let mut i = 2;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--preset" if i + 1 < args.len() => {
+                preset = args[i + 1].clone();
+                i += 2;
+            }
+            "--role" if i + 1 < args.len() => {
+                role = args[i + 1].clone();
+                i += 2;
+            }
+            "--command" if i + 1 < args.len() => {
+                command = args[i + 1].clone();
+                i += 2;
+            }
+            _ => i += 1,
+        }
+    }
+    (preset, role, command)
+}
+
+fn load_prefs_roles() -> Vec<(String, String)> {
+    let path = crate::store::app_data_dir().join("preferences.json");
+    let Ok(bytes) = std::fs::read(path) else { return vec![] };
+    let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) else { return vec![] };
+    v.get("rolePresets")
+        .and_then(|r| r.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|r| Some((r.get("name")?.as_str()?.to_string(), r.get("id")?.as_str()?.to_string())))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn now_iso_simple() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let days = (secs / 86400) as i64;
+    let sod = (secs % 86400) as i64;
+    let z = days + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, m, d, sod / 3600, (sod % 3600) / 60, sod % 60)
+}
+
+fn maestro_recruit(args: &[String], terminal_id: Option<&str>, registry: &AgentRegistry) -> String {
+    if args.len() < 2 {
+        return "error: usage: omaestri recruit \"Name\" [--preset <agentType>] [--role <roleName>] [--command <cmd>]".to_string();
+    }
+    let Some(tid) = terminal_id else {
+        return "error: missing terminal ID".to_string();
+    };
+    let ws = registry.workspace_id.lock().unwrap().clone();
+    let Some(ws) = ws else {
+        return "error: no active workspace".to_string();
+    };
+    let cwd = match maestro_caller_is_manager(registry, &ws, tid) {
+        Ok(c) => c,
+        Err(e) => return e,
+    };
+    let name = args[1].clone();
+    let (preset_id, role_name, custom_cmd) = parse_flags(args);
+    let presets = [
+        ("claude_code", "Claude Code", "claude", "#007AFF"),
+        ("codex", "Codex", "codex", "#5856D6"),
+        ("gemini_cli", "Gemini CLI", "gemini", "#34C759"),
+        ("open_code", "OpenCode", "opencode", "#FF9500"),
+        ("generic_shell", "Shell", "", "#8E8E93"),
+    ];
+    let pl = preset_id.to_lowercase();
+    let found = presets.iter().find(|(at, nm, cmd, _)| *at == pl || nm.to_lowercase() == pl || *cmd == pl);
+    let (agent_type, cmd, color) = match found {
+        Some((at, _, c, col)) => (at.to_string(), c.to_string(), col.to_string()),
+        None => (
+            "generic_shell".to_string(),
+            if custom_cmd.is_empty() { preset_id.clone() } else { custom_cmd.clone() },
+            "#8E8E93".to_string(),
+        ),
+    };
+    let cmd = if !custom_cmd.is_empty() { custom_cmd } else { cmd };
+    let role_id: Option<String> = if role_name.is_empty() {
+        None
+    } else {
+        load_prefs_roles().iter().find(|(n, _)| n.to_lowercase() == role_name.to_lowercase()).map(|(_, id)| id.clone())
+    };
+    let mut doc = match crate::store::load_workspace_json(&ws) {
+        Ok(d) => d,
+        Err(e) => return format!("error: {e}"),
+    };
+    let recruit_id = uuid_simple();
+    let conn_id = uuid_simple();
+    let now = now_iso_simple();
+    let node = serde_json::json!({
+        "id": recruit_id,
+        "frame": [[0.0, 0.0], [420.0, 300.0]],
+        "content": {"terminal": {"_0": {
+            "agentType": agent_type, "command": cmd, "name": name,
+            "icon": "terminal", "color": color, "id": recruit_id,
+            "shellPath": "powershell.exe", "workingDirectory": cwd,
+            "status": "idle", "isManager": false, "monitorWithOmbro": false,
+            "autoScrollLocked": false, "shortcutMode": {"kind": "automatic"},
+            "assignedRoleId": role_id, "scrollbackLineCount": 0
+        }}},
+        "zIndex": 0, "isLocked": false, "createdAt": now, "lastModifiedAt": now
+    });
+    let conn = serde_json::json!({
+        "id": conn_id, "createdAt": now,
+        "terminalIdA": tid, "terminalIdB": recruit_id, "ropePoints": []
+    });
+    if let Some(p) = doc.get_mut("payload") {
+        if let Some(nodes) = p.get_mut("nodes").and_then(|n| n.as_array_mut()) {
+            nodes.push(node);
+        }
+        if let Some(conns) = p.get_mut("connections").and_then(|n| n.as_array_mut()) {
+            conns.push(conn);
+        }
+        p["lastModifiedAt"] = serde_json::Value::String(now.clone());
+    }
+    match crate::store::save_workspace_json(&ws, &doc) {
+        Ok(_) => {
+            registry.register_terminal(&recruit_id, &name);
+            let mut msg = format!("Recruited '{name}' with preset '{agent_type}'");
+            if !role_name.is_empty() {
+                msg.push_str(&format!(" and role '{role_name}'"));
+            }
+            msg
+        }
+        Err(e) => format!("error: {e}"),
+    }
+}
+
+fn maestro_dismiss(args: &[String], terminal_id: Option<&str>, registry: &AgentRegistry) -> String {
+    if args.len() < 2 {
+        return "error: usage: omaestri dismiss \"Name\"".to_string();
+    }
+    let Some(tid) = terminal_id else {
+        return "error: missing terminal ID".to_string();
+    };
+    let needle = args[1].to_lowercase();
+    let target = {
+        let map = registry.terminals.lock().unwrap();
+        map.iter()
+            .filter(|(id, _)| id.as_str() != tid)
+            .find(|(id, name)| {
+                name.to_lowercase().contains(&needle)
+                    || id.to_lowercase().starts_with(&needle)
+                    || id.to_lowercase() == needle
+            })
+            .map(|(id, _)| id.clone())
+    };
+    let Some(target) = target else {
+        return format!("error: agent '{}' not found among connected agents", args[1]);
+    };
+    let ws = registry.workspace_id.lock().unwrap().clone();
+    if let Some(ws) = ws {
+        if let Ok(mut doc) = crate::store::load_workspace_json(&ws) {
+            if let Some(p) = doc.get_mut("payload") {
+                for key in ["connections", "noteConnections", "portalConnections"] {
+                    if let Some(arr) = p.get_mut(key).and_then(|a| a.as_array_mut()) {
+                        arr.retain(|c| {
+                            let vals: Vec<String> = c
+                                .as_object()
+                                .map(|o| o.values().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+                                .unwrap_or_default();
+                            !vals.iter().any(|v| v == &target)
+                        });
+                    }
+                }
+                if let Some(nodes) = p.get_mut("nodes").and_then(|n| n.as_array_mut()) {
+                    nodes.retain(|n| {
+                        let nid = n.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                        let cid = n
+                            .get("content")
+                            .and_then(|c| c.get("terminal"))
+                            .and_then(|t| t.get("_0"))
+                            .and_then(|t| t.get("id"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        nid != target && cid != target
+                    });
+                }
+            }
+            let _ = crate::store::save_workspace_json(&ws, &doc);
+        }
+    }
+    if let Some(pty) = PTY.get() {
+        pty.kill(&target);
+    }
+    registry.terminals.lock().unwrap().remove(&target);
+    format!("Dismissed '{}'", args[1])
+}
+
+fn maestro_connect(args: &[String], registry: &AgentRegistry) -> String {
+    if args.len() < 3 {
+        return "error: usage: omaestri connect \"From\" \"To\"".to_string();
+    }
+    let ws = registry.workspace_id.lock().unwrap().clone();
+    let Some(ws) = ws else {
+        return "error: no active workspace".to_string();
+    };
+    let (from, to) = (args[1].clone(), args[2].clone());
+    let (f, t) = {
+        let map = registry.terminals.lock().unwrap();
+        let find = |needle: &str| {
+            map.iter()
+                .find(|(_, name)| name.to_lowercase().contains(&needle.to_lowercase()))
+                .map(|(id, _)| id.clone())
+        };
+        (find(&from), find(&to))
+    };
+    let (Some(f), Some(t)) = (f, t) else {
+        return "error: agent not found (both must be known terminals)".to_string();
+    };
+    let mut doc = match crate::store::load_workspace_json(&ws) {
+        Ok(d) => d,
+        Err(e) => return format!("error: {e}"),
+    };
+    let now = now_iso_simple();
+    let conn = serde_json::json!({
+        "id": uuid_simple(), "createdAt": now,
+        "terminalIdA": f, "terminalIdB": t, "ropePoints": []
+    });
+    if let Some(p) = doc.get_mut("payload") {
+        if let Some(arr) = p.get_mut("connections").and_then(|a| a.as_array_mut()) {
+            arr.push(conn);
+        }
+    }
+    match crate::store::save_workspace_json(&ws, &doc) {
+        Ok(_) => format!("Connected '{from}' ↔ '{to}'"),
+        Err(e) => format!("error: {e}"),
     }
 }
 
