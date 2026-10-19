@@ -128,17 +128,13 @@
 
 ## Score
 
-- Itens OK: 89 | Parcial-como-Mac: 3 | Gaps: 4 (recruit E2E ×2 contados 1x, vista 3D floors, portal automação, portal shared-session)
-- Total avaliado: 93 → **89/93 ≈ 96%** (parciais contam meio: **≈ 97%**)
+- Itens OK: 91 | Parcial-como-Mac: 3 | Gaps: 2 (portal automação 26 subs = estágio 2 WebView2; Floors vista 3D dedicada)
+- Total avaliado: 93 → **91/93 ≈ 98%** (parciais contam meio: **≈ 98%**)
 
-## Para 99% (4 gaps restantes)
+## Para 99% (2 gaps restantes, ambos estágio 2)
 
-1. `recruit` cria PTY real via `pty_spawn` + registra no registry (1 slice).
-2. Portal shared-session: grupo de portals compartilha profile (estágio 2 parcial).
-3. Portal automação mínima: `snapshot` viaAccessibility? Sem WebView2 não há;
-   alternativa honesta: marcar estágio 2 como fora do 99% (documentar).
-4. Floors vista 3D: fora do parcial do Mac? O Mac tem botão 3D parcial —
-   nosso botão abre modal (equivalente funcional).
-
-Com (1) feito: **90/93 ≈ 97%**; com (1)+(4-doc): **≈ 98%**. Os 26 subs de
-automação portal são o restante — estágio 2 WebView2 dedicado.
+1. Portal automação (26 subs: snapshot/click/fill/type...): exige WebView2
+   dedicada por portal (multi-window Tauri + ExecuteScriptAsync). Fora do
+   escopo honesto do estágio 1 (iframe).
+2. Floors vista 3D dedicada: o Mac tem botão 3D parcial; nosso modal cobre a
+   função (create/land/remove/hooks). Equivalente funcional.
