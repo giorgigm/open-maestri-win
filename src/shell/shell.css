@@ -278,6 +278,17 @@
 .note-formatted code { font-family: Consolas, monospace; font-size: 12px; background: rgba(0,0,0,.08); border-radius: 4px; padding: 0 4px; }
 .note-formatted pre code { background: none; padding: 0; }
 .note-loading { padding: 12px; color: var(--om-muted); font-size: 12px; }
+.portal-node { display: flex; flex-direction: column; height: 100%; background: white; border-radius: 8px; overflow: hidden; }
+.portal-bar { display: flex; align-items: center; gap: 4px; padding: 5px 6px; background: #f4f4f5; border-bottom: 1px solid var(--om-border); }
+.portal-bar button { border: 1px solid var(--om-border); background: white; border-radius: 6px; padding: 2px 8px; cursor: pointer; font-size: 12px; }
+.portal-bar input { flex: 1; border: 1px solid var(--om-border); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
+.portal-spin::after { content: "⟳"; animation: om-spin 1s linear infinite; display: inline-block; }
+@keyframes om-spin { to { transform: rotate(360deg); } }
+.portal-page { flex: 1; min-height: 100px; position: relative; }
+.portal-page iframe { width: 100%; height: 100%; border: none; background: white; }
+.portal-empty { padding: 20px; color: var(--om-muted); font-size: 12px; text-align: center; }
+.portal-fallback { padding: 20px; text-align: center; font-size: 13px; }
+.portal-fallback button { margin: 8px; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--om-border); cursor: pointer; }
 .term-body { flex: 1; padding: 0; overflow: hidden; background: #0c0c0e; min-height: 60px; }
 .term-xterm { flex: 1; min-height: 60px; overflow: hidden; }
 .term-xterm .xterm { height: 100%; padding: 4px 6px; }

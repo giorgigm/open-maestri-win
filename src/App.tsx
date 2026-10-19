@@ -8,6 +8,7 @@ import ZoomControls from "./shell/ZoomControls";
 import ContextMenu, { type MenuItem } from "./shell/ContextMenu";
 import WorkspaceModal from "./shell/WorkspaceModal";
 import NewTerminalModal, { type NewTerminalSpec } from "./nodes/NewTerminalModal";
+import NewPortalModal from "./nodes/NewPortalModal";
 import "./shell/shell.css";
 import "./App.css";
 import {
@@ -17,6 +18,7 @@ import {
   nodeVariant,
   type CanvasNode,
   type FrameRect,
+  type PortalContent,
   type StickyNoteContent,
   type TerminalContent,
   type WorkspaceDocument,
@@ -402,6 +404,50 @@ export default function App() {
 
   // pending terminal placement: drag-to-place captured rect, modal confirms spec
   const [pendingTerm, setPendingTerm] = useState<{ rect: FrameRect } | null>(null);
+  const [pendingPortal, setPendingPortal] = useState<{ rect: FrameRect } | null>(null);
+
+  const createPortal = (rect: FrameRect, url: string, name: string) => {
+    const d = docRef.current;
+    if (!d) return;
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const node: CanvasNode = {
+      id,
+      frame: rectToFrameArray(rect),
+      content: {
+        portal: {
+          _0: { id, name, currentURL: url, source: { url: { _0: url } }, status: "idle", chromeHidden: false, storageScope: "isolated" },
+        },
+      },
+      zIndex: 0,
+      isLocked: false,
+      createdAt: now,
+      lastModifiedAt: now,
+    };
+    setDoc({ ...d, payload: { ...d.payload, nodes: [...d.payload.nodes, node] } });
+    setPendingPortal(null);
+    setTool("select");
+  };
+
+  const navigatePortal = (nodeId: string, url: string) => {
+    const d = docRef.current;
+    if (!d) return;
+    setDoc({
+      ...d,
+      payload: {
+        ...d.payload,
+        nodes: d.payload.nodes.map((n) => {
+          if (n.id !== nodeId || nodeVariant(n.content) !== "portal") return n;
+          const c = (n.content as { portal: { _0: PortalContent } }).portal._0;
+          return {
+            ...n,
+            content: { portal: { _0: { ...c, currentURL: url, source: { url: { _0: url } } } } },
+            lastModifiedAt: new Date().toISOString(),
+          };
+        }),
+      },
+    });
+  };
 
   // badges: terminal order by creation (mirrors Mac Cmd+number badges)
   const terminalBadges = new Map<string, number>();
@@ -414,6 +460,10 @@ export default function App() {
   const handleAddNodeAt = (kind: "terminal" | "stickyNote" | "text" | "fileTree" | "portal", rect: FrameRect) => {
     if (kind === "terminal") {
       setPendingTerm({ rect }); // modal confirms spec
+      return;
+    }
+    if (kind === "portal") {
+      setPendingPortal({ rect }); // modal asks URL + name
       return;
     }
     addNodeAt(kind, rect);
@@ -569,8 +619,7 @@ export default function App() {
     });
   };
 
-  const renameNote = (id: string, name: string) => {
-    const d = docRef.current;
+  const renameNote = (id: string, name: string) => {    const d = docRef.current;
     if (!d) return;
     setDoc({
       ...d,
@@ -794,6 +843,7 @@ export default function App() {
           terminalBadges={terminalBadges}
           onToggleNotePreview={toggleNotePreview}
           onRenameNote={renameNote}
+          onNavigatePortal={navigatePortal}
           onConnectNodes={createConnection}
           connectSource={connectSource}
           setConnectSource={setConnectSource}
@@ -858,6 +908,15 @@ export default function App() {
             setTool("select");
           }}
           onCreate={(spec) => createTerminalFromSpec(pendingTerm.rect, spec)}
+        />
+      )}
+      {pendingPortal && (
+        <NewPortalModal
+          onCancel={() => {
+            setPendingPortal(null);
+            setTool("select");
+          }}
+          onCreate={(url, name) => createPortal(pendingPortal.rect, url, name)}
         />
       )}
       {modal?.mode === "new" && (

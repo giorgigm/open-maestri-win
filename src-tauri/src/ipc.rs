@@ -88,7 +88,7 @@ pub fn route(args: &[String], terminal_id: Option<&str>, registry: &AgentRegistr
             }
         }
         "note" => handle_note(args, terminal_id, registry),
-        "portal" => "error: portal not connected (no portals in this build)".to_string(),
+        "portal" => handle_portal(args, terminal_id, registry),
         "recruit" | "dismiss" | "connect" => {
             "error: maestro mode requires a manager terminal".to_string()
         }
@@ -216,8 +216,7 @@ fn handle_note(args: &[String], terminal_id: Option<&str>, registry: &AgentRegis
     }
 }
 
-fn with_line_range(content: &str, offset: Option<usize>, limit: Option<usize>) -> String {
-    // mirrors NoteFileManager.readWithLineRange: `[N lines total]\n1    ...`
+fn with_line_range(content: &str, offset: Option<usize>, limit: Option<usize>) -> String {    // mirrors NoteFileManager.readWithLineRange: `[N lines total]\n1    ...`
     let lines: Vec<&str> = content.split('\n').collect();
     let total = lines.len();
     let start = offset.map(|o| o.saturating_sub(1)).unwrap_or(0).min(total);
@@ -231,7 +230,97 @@ fn with_line_range(content: &str, offset: Option<usize>, limit: Option<usize>) -
     format!("{}\n{}", header, numbered.join("\n"))
 }
 
-fn resolve_note_path(workspace_id: &str, name: &str) -> Option<std::path::PathBuf> {    let dir = crate::store::notes_dir(workspace_id);
+fn handle_portal(args: &[String], terminal_id: Option<&str>, registry: &AgentRegistry) -> String {
+    if terminal_id.is_none() {
+        return "error: missing terminal ID".to_string();
+    }
+    if args.len() < 2 {
+        return "error: usage: omaestri portal <navigate|info|snapshot> ...".to_string();
+    }
+    let ws = registry.workspace_id.lock().unwrap().clone();
+    let Some(ws) = ws else {
+        return "error: no active workspace".to_string();
+    };
+    let sub = args[1].as_str();
+    // resolve portal BY NAME from the active workspace (fixes Mac resolvePortalId ignoring name)
+    let find_portal = |name: &str| -> Option<(String, serde_json::Value)> {
+        let doc = crate::store::load_workspace_json(&ws).ok()?;
+        let nodes = doc.get("payload")?.get("nodes")?.as_array()?;
+        let needle = name.to_lowercase();
+        let mut fuzzy = None;
+        for n in nodes {
+            let content = n.get("content")?.get("portal")?.get("_0")?;
+            let pname = content.get("name")?.as_str()?;
+            let id = n.get("id")?.as_str()?;
+            if pname == name {
+                return Some((id.to_string(), content.clone()));
+            }
+            if fuzzy.is_none() && pname.to_lowercase().contains(&needle) {
+                fuzzy = Some((id.to_string(), content.clone()));
+            }
+        }
+        fuzzy
+    };
+    match sub {
+        "navigate" => {
+            if args.len() < 4 {
+                return "error: usage: omaestri portal navigate \"Name\" \"URL\"".to_string();
+            }
+            let Some((pid, _)) = find_portal(&args[2]) else {
+                return format!("error: portal '{}' not found", args[2]);
+            };
+            match set_portal_url(&ws, &pid, &args[3]) {
+                Ok(_) => "OK".to_string(),
+                Err(e) => e,
+            }
+        }
+        "info" => {
+            if args.len() < 3 {
+                return "error: usage: omaestri portal info \"Name\"".to_string();
+            }
+            match find_portal(&args[2]) {
+                Some((_, c)) => format!(
+                    "name: \"{}\"\nurl: {}\nstatus: {}",
+                    c.get("name").and_then(|v| v.as_str()).unwrap_or("?"),
+                    c.get("currentURL").and_then(|v| v.as_str()).unwrap_or(""),
+                    c.get("status").and_then(|v| v.as_str()).unwrap_or("idle")
+                ),
+                None => format!("error: portal '{}' not found", args[2]),
+            }
+        }
+        "snapshot" => {
+            // estágio 1: iframe embed — accessibility tree indisponível cross-origin
+            "error: portal snapshot needs the native WebView2 stage (portal shows pages; automation lands in stage 2)".to_string()
+        }
+        _ => format!("error: unknown portal subcommand '{sub}' (stage 1: navigate|info|snapshot)"),
+    }
+}
+
+fn set_portal_url(workspace_id: &str, node_id: &str, url: &str) -> Result<(), String> {
+    let mut doc = crate::store::load_workspace_json(workspace_id)?;
+    let nodes = doc
+        .get_mut("payload")
+        .and_then(|p| p.get_mut("nodes"))
+        .and_then(|n| n.as_array_mut())
+        .ok_or_else(|| "error: invalid workspace".to_string())?;
+    for n in nodes.iter_mut() {
+        if n.get("id").and_then(|v| v.as_str()) == Some(node_id) {
+            let content = n
+                .get_mut("content")
+                .and_then(|c| c.get_mut("portal"))
+                .and_then(|p| p.get_mut("_0"))
+                .ok_or_else(|| "error: not a portal".to_string())?;
+            content["currentURL"] = serde_json::Value::String(url.to_string());
+            content["source"] = serde_json::json!({"url": {"_0": url}});
+            crate::store::save_workspace_json(workspace_id, &doc)?;
+            return Ok(());
+        }
+    }
+    Err(format!("error: portal node '{node_id}' not found"))
+}
+
+fn resolve_note_path(workspace_id: &str, name: &str) -> Option<std::path::PathBuf> {
+    let dir = crate::store::notes_dir(workspace_id);
     let exact = dir.join(format!("{name}.md"));
     if exact.exists() {
         return Some(exact);
@@ -472,7 +561,7 @@ mod tests {
             assert!(c.starts_with("Created note"), "{c}");
             let name = c.trim_start_matches("Created note \"").trim_end_matches('"');
             let (_, r) = post(server.port, &["note", "read", name], Some("tid-1"), "1.1");
-            assert_eq!(r, "hello");
+            assert_eq!(r, "[1 lines total]\n1    hello");
             let (_, w) = post(server.port, &["note", "write", name, "world"], Some("tid-1"), "1.1");
             assert_eq!(w, "OK");
             let (_, e) = post(server.port, &["note", "edit", name, "world", "WORLD"], Some("tid-1"), "1.1");
