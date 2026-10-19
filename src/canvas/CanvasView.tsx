@@ -5,11 +5,14 @@ import {
   nodeVariant,
   type CanvasNode,
   type FrameRect,
+  type TerminalContent,
   type WorkspaceDocument,
 } from "../lib/workspace-schema";
 import { canvasToScreen, screenToCanvas, zoomAround, type Viewport } from "../lib/viewport";
 import { createRope, tickRope, ropeToPath } from "../lib/rope";
 import { snapRect, type Guide } from "./snap";
+import TerminalNode from "../nodes/TerminalNode";
+import { BUILTIN_ROLES } from "../lib/presets";
 import type { ToolId } from "../lib/manifest";
 
 export type AddKind = "terminal" | "stickyNote" | "text" | "fileTree" | "portal";
@@ -22,6 +25,11 @@ interface RopeState {
 
 function nodeCenter(r: FrameRect) {
   return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+}
+
+function roleNameFor(roleId?: string | null): string | null {
+  if (!roleId) return null;
+  return BUILTIN_ROLES.find((r) => r.id === roleId)?.name ?? null;
 }
 
 function minSize(variant: string): { w: number; h: number } {
@@ -57,6 +65,7 @@ export interface CanvasViewProps {
   updateNodeFrame: (id: string, r: FrameRect) => void;
   tool: ToolId;
   setTool: (t: ToolId) => void;
+  terminalBadges: Map<string, number>;
   onAddNode: (kind: AddKind) => void;
   onAddNodeAt: (kind: AddKind, rect: FrameRect) => void;
   onDuplicateNode: (id: string) => { newId: string; rect: FrameRect } | null;
@@ -72,6 +81,7 @@ export default function CanvasView({
   setViewport,
   updateNodeFrame,
   tool,
+  terminalBadges,
   onAddNodeAt,
   onDuplicateNode,
   onNodeContextMenu,
@@ -414,17 +424,26 @@ export default function CanvasView({
               onNodeContextMenu(e, n.id);
             }}
           >
-            <div className="node-header">{nodeDisplayName(n.id, n.content)}</div>
-            <div className="node-body">
-              {variant === "terminal" && <div className="term-placeholder">powershell.exe — PTY em F4</div>}
-              {variant === "stickyNote" && <div className="note-placeholder">note…</div>}
-              {variant === "text" && (
-                <span>{(n.content as { text: { _0: { text: string } } }).text._0.text}</span>
-              )}
-              {(variant === "fileTree" || variant === "portal") && (
-                <div className="note-placeholder">{variant === "fileTree" ? "file tree…" : "portal…"}</div>
-              )}
-            </div>
+            {variant === "terminal" ? (
+              <TerminalNode
+                content={(n.content as { terminal: { _0: TerminalContent } }).terminal._0}
+                badge={terminalBadges.get(n.id) ?? null}
+                roleName={roleNameFor((n.content as { terminal: { _0: TerminalContent } }).terminal._0.assignedRoleId)}
+              />
+            ) : (
+              <>
+                <div className="node-header">{nodeDisplayName(n.id, n.content)}</div>
+                <div className="node-body">
+                  {variant === "stickyNote" && <div className="note-placeholder">note…</div>}
+                  {variant === "text" && (
+                    <span>{(n.content as { text: { _0: { text: string } } }).text._0.text}</span>
+                  )}
+                  {(variant === "fileTree" || variant === "portal") && (
+                    <div className="note-placeholder">{variant === "fileTree" ? "file tree…" : "portal…"}</div>
+                  )}
+                </div>
+              </>
+            )}
             {sel &&
               HANDLES.map((h) => (
                 <div key={h} className={`om-handle om-handle-${h}`} onMouseDown={(e) => startResize(e, n.id, h)} />

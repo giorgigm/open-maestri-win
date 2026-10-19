@@ -8,7 +8,7 @@
 | `workspace-store` | manifest, multi-workspace CRUD, folders/groups, paths Windows | — | parcial (store.rs single-ws) |
 | `ipc-cli` | `POST /cli` + `omaestri.exe` — pronto F1/F2, sem spec | `workspace-store` | pronto |
 | `app-shell` | sidebar + pill de ferramentas + zoom/minimap + menus dark | `workspace-store` | pronto |
-| `canvas-core` | pan/zoom, drag/resize/duplicate/delete, snap, seleção, rope render | `app-shell` | próxima SPEC |
+| `canvas-core` | pan/zoom, drag/resize/duplicate/delete, snap, seleção, rope render | `app-shell` | pronto |
 | `node-terminal` | nó terminal + modal New Terminal + presets + roles + Maestro | `canvas-core` | após canvas-core |
 | `pty-backend` | ConPTY + scrollback + idle + ask/check (F4) | `ipc-cli` | após node-terminal UI |
 | `node-note` | Raw/Formatted, rename/move-to, drag-in, note chains | `canvas-core` | — |

@@ -212,6 +212,10 @@
 .om-modal-row button.primary { background: #2563eb; color: white; border: none; }
 .om-modal-row button:disabled { opacity: 0.4; }
 
+.om-modal-term { width: 400px; }
+
+.om-qs-label { font-size: 11px; color: var(--om-muted); }
+
 .om-status {
   position: absolute;
   left: 12px;
@@ -226,3 +230,38 @@
 }
 
 .connect-mode { cursor: crosshair !important; }
+
+.om-preset-row { display: flex; gap: 8px; }
+.om-preset { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; border: 1px solid var(--om-border); background: white; border-radius: 10px; padding: 8px 2px; cursor: pointer; }
+.om-preset.on { background: #eff6ff; border-color: var(--om-accent); }
+.om-preset-icon { width: 34px; height: 34px; border: 1.5px solid; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; }
+.om-preset-name { font-size: 9px; color: var(--om-muted); }
+.om-tabs { display: flex; background: #f4f4f5; border-radius: 8px; padding: 2px; }
+.om-tabs button { flex: 1; border: none; background: transparent; border-radius: 6px; padding: 5px; cursor: pointer; font-size: 12px; }
+.om-tabs button.on { background: white; box-shadow: 0 1px 3px rgba(0,0,0,.15); font-weight: 600; }
+.om-tab-body { display: flex; flex-direction: column; gap: 10px; }
+.om-tab-body label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--om-muted); }
+.om-tab-body input { border: 1px solid var(--om-border); border-radius: 8px; padding: 7px 10px; font-size: 13px; color: var(--om-text); }
+.om-check { flex-direction: row !important; align-items: center; gap: 6px !important; color: var(--om-text) !important; }
+.om-appear { display: flex; gap: 10px; align-items: center; }
+.om-dot { width: 32px; height: 32px; border-radius: 50%; }
+.om-appear-name { font-size: 13px; font-weight: 600; }
+.om-appear-type { font-size: 11px; color: var(--om-muted); }
+.om-muted { font-size: 12px; color: var(--om-muted); }
+.om-role { border: 1px solid var(--om-border); background: white; border-radius: 8px; padding: 7px; cursor: pointer; text-align: left; }
+.om-role.on { background: #eff6ff; border-color: var(--om-accent); }
+.term-node { display: flex; flex-direction: column; height: 100%; background: #0c0c0e; color: #e4e4e7; border-radius: 8px; overflow: hidden; }
+.term-head { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: #18181b; border-left: 3px solid #8E8E93; font-size: 12px; }
+.term-icon { width: 18px; height: 18px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: white; }
+.term-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.term-role, .term-maestro { font-size: 10px; background: #3f3f46; border-radius: 8px; padding: 1px 7px; }
+.term-maestro { background: #7c3aed; color: white; }
+.term-badge { margin-left: auto; font-size: 10px; color: #a1a1aa; }
+.term-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; }
+.term-body { flex: 1; padding: 8px; overflow: hidden; }
+.term-cmd { font-family: Consolas, monospace; font-size: 12px; color: #fafafa; }
+.term-hint { font-size: 11px; color: #71717a; margin-top: 4px; }
+.term-foot { display: flex; justify-content: space-between; gap: 8px; padding: 4px 8px; background: #18181b; font-size: 10px; color: #a1a1aa; }
+.term-cwd { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.term-status { text-transform: uppercase; }
+.term-running { color: #4ade80; }

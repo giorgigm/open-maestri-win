@@ -7,6 +7,7 @@ import ToolPill from "./shell/ToolPill";
 import ZoomControls from "./shell/ZoomControls";
 import ContextMenu, { type MenuItem } from "./shell/ContextMenu";
 import WorkspaceModal from "./shell/WorkspaceModal";
+import NewTerminalModal, { type NewTerminalSpec } from "./nodes/NewTerminalModal";
 import "./shell/shell.css";
 import "./App.css";
 import {
@@ -16,6 +17,7 @@ import {
   nodeVariant,
   type CanvasNode,
   type FrameRect,
+  type TerminalContent,
   type WorkspaceDocument,
 } from "./lib/workspace-schema";
 import type { Viewport } from "./lib/viewport";
@@ -332,6 +334,77 @@ export default function App() {
     });
   };
 
+  // pending terminal placement: drag-to-place captured rect, modal confirms spec
+  const [pendingTerm, setPendingTerm] = useState<{ rect: FrameRect } | null>(null);
+
+  // badges: terminal order by creation (mirrors Mac Cmd+number badges)
+  const terminalBadges = new Map<string, number>();
+  doc?.payload.nodes
+    .filter((x) => nodeVariant(x.content) === "terminal")
+    .forEach((x, i) => {
+      if (i < 9) terminalBadges.set(x.id, i + 1);
+    });
+
+  const handleAddNodeAt = (kind: "terminal" | "stickyNote" | "text" | "fileTree" | "portal", rect: FrameRect) => {
+    if (kind === "terminal") {
+      setPendingTerm({ rect }); // modal confirms spec
+      return;
+    }
+    addNodeAt(kind, rect);
+  };
+
+  const createTerminalFromSpec = (rect: FrameRect, spec: NewTerminalSpec) => {
+    const d = docRef.current;
+    if (!d) return;
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const content: CanvasNode["content"] = {
+      terminal: {
+        _0: {
+          agentType: spec.preset.agentType,
+          command: spec.preset.command,
+          name: spec.name,
+          icon: spec.preset.icon,
+          color: spec.preset.color,
+          id,
+          shellPath: spec.preset.shellPath,
+          workingDirectory: spec.workingDirectory,
+          status: "idle",
+          isManager: spec.isManager,
+          monitorWithOmbro: spec.monitorActivity,
+          autoScrollLocked: false,
+          shortcutMode: { kind: "automatic" },
+          assignedRoleId: spec.roleId,
+          scrollbackLineCount: 0,
+        },
+      },
+    };
+    const node: CanvasNode = { id, frame: rectToFrameArray(rect), content, zIndex: 0, isLocked: false, createdAt: now, lastModifiedAt: now };
+    setDoc({ ...d, payload: { ...d.payload, nodes: [...d.payload.nodes, node] } });
+    setPendingTerm(null);
+    setTool("select");
+  };
+
+  const toggleMaestro = (nodeId: string) => {
+    const d = docRef.current;
+    if (!d) return;
+    setDoc({
+      ...d,
+      payload: {
+        ...d.payload,
+        nodes: d.payload.nodes.map((n) => {
+          if (n.id !== nodeId || nodeVariant(n.content) !== "terminal") return n;
+          const t = (n.content as { terminal: { _0: TerminalContent } }).terminal._0;
+          return {
+            ...n,
+            content: { terminal: { _0: { ...t, isManager: !t.isManager } } },
+            lastModifiedAt: new Date().toISOString(),
+          };
+        }),
+      },
+    });
+  };
+
   const updateNodeFrame = (id: string, r: FrameRect) => {
     const d = docRef.current;
     if (!d) return;
@@ -411,10 +484,13 @@ export default function App() {
     if (id === "delete" && nodeId) deleteNodes([nodeId]);
     else if (id === "duplicate" && nodeId) duplicateNode(nodeId);
     else if (id === "connect") setTool("connection");
-    else if (id === "rename" && nodeId) {
+    else if (id === "maestro" && nodeId) toggleMaestro(nodeId);
+    else if (id === "role" && nodeId) {
+      setStatus("Assign Role: use o terminal + tab Roles do modal (settings em breve)");
+    } else if (id === "rename" && nodeId) {
       const d = docRef.current;
       const n = d?.payload.nodes.find((x) => x.id === nodeId);
-      if (n) setStatus(`rename "${n.id.slice(0, 8)}" — editor em canvas-core`);
+      if (n) setStatus(`rename "${n.id.slice(0, 8)}" — editor em node-note/node-terminal`);
     } else setStatus(`"${id}" em breve (módulo do nó)`);
   };
 
@@ -476,6 +552,23 @@ export default function App() {
         setTool("portal");
         return;
       }
+      // Ctrl+1..9 focuses the Nth terminal by creation order (mirrors Mac Cmd+number)
+      if (e.ctrlKey && /^[1-9]$/.test(e.key)) {
+        e.preventDefault();
+        const d = docRef.current;
+        const terms = d?.payload.nodes.filter((x) => nodeVariant(x.content) === "terminal") ?? [];
+        const n = terms[parseInt(e.key, 10) - 1];
+        if (n) {
+          const v = viewRef.current;
+          setViewport((vv) => ({
+            ...vv,
+            originX: n.frame[0][0] - 400 / v.zoom,
+            originY: n.frame[0][1] - 300 / v.zoom,
+          }));
+          setStatus(`focused terminal ${e.key}`);
+        }
+        return;
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -534,7 +627,8 @@ export default function App() {
           tool={tool}
           setTool={setTool}
           onAddNode={addNode}
-          onAddNodeAt={addNodeAt}
+          onAddNodeAt={handleAddNodeAt}
+          terminalBadges={terminalBadges}
           onDuplicateNode={duplicateNodeCb}
           onDeleteConnection={deleteConnection}
           onNodeContextMenu={(e, nodeId) =>
@@ -586,6 +680,16 @@ export default function App() {
             else if (id === "add-note") addNode("stickyNote");
             else if (id === "add-text") addNode("text");
           }}
+        />
+      )}
+      {pendingTerm && (
+        <NewTerminalModal
+          defaultDir={doc.payload.workingDirectory}
+          onCancel={() => {
+            setPendingTerm(null);
+            setTool("select");
+          }}
+          onCreate={(spec) => createTerminalFromSpec(pendingTerm.rect, spec)}
         />
       )}
       {modal?.mode === "new" && (
