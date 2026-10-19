@@ -95,6 +95,9 @@ pub fn load_workspace_json(workspace_id: &str) -> Result<serde_json::Value, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn test_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("omw-store-test-{name}"));
@@ -105,6 +108,7 @@ mod tests {
 
     #[test]
     fn roundtrip_workspace_json() {
+        let _lock = ENV_LOCK.lock().unwrap();
         let _dir = test_dir("roundtrip");
         let ws = "00000000-0000-0000-0000-000000000001";
         let raw: serde_json::Value = serde_json::from_str(include_str!(
@@ -122,6 +126,7 @@ mod tests {
 
     #[test]
     fn rejects_bad_envelope() {
+        let _lock = ENV_LOCK.lock().unwrap();
         let _dir = test_dir("reject");
         let ws = "ws-bad";
         let bad = serde_json::json!({"schemaVersion": 1, "type": "workspace", "payload": {}});

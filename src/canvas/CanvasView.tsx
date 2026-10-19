@@ -429,6 +429,7 @@ export default function CanvasView({
                 content={(n.content as { terminal: { _0: TerminalContent } }).terminal._0}
                 badge={terminalBadges.get(n.id) ?? null}
                 roleName={roleNameFor((n.content as { terminal: { _0: TerminalContent } }).terminal._0.assignedRoleId)}
+                workspaceId={doc.payload.id}
               />
             ) : (
               <>

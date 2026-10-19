@@ -1,9 +1,11 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 pub mod ipc;
 pub mod manifest;
+pub mod pty;
 pub mod store;
 
 use std::sync::Arc;
+use tauri::Manager;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -94,10 +96,42 @@ fn workspace_set_active(workspace_id: String, state: tauri::State<'_, IpcState>)
     Ok(())
 }
 
+#[tauri::command]
+fn pty_spawn(
+    terminal_id: String,
+    command: String,
+    cwd: String,
+    cols: u16,
+    rows: u16,
+    workspace_id: Option<String>,
+    agent_name: Option<String>,
+    state: tauri::State<'_, IpcState>,
+) -> Result<(), String> {
+    state.registry.register_terminal(&terminal_id, &agent_name.clone().unwrap_or_else(|| "Shell".to_string()));
+    state.pty.spawn(terminal_id, command, cwd, cols, rows, workspace_id, agent_name)
+}
+
+#[tauri::command]
+fn pty_write(terminal_id: String, data: String, state: tauri::State<'_, IpcState>) -> Result<(), String> {
+    state.pty.write(&terminal_id, &data)
+}
+
+#[tauri::command]
+fn pty_resize(terminal_id: String, cols: u16, rows: u16, state: tauri::State<'_, IpcState>) -> Result<(), String> {
+    state.pty.resize(&terminal_id, cols, rows)
+}
+
+#[tauri::command]
+fn pty_kill(terminal_id: String, state: tauri::State<'_, IpcState>) -> Result<(), String> {
+    state.pty.kill(&terminal_id);
+    Ok(())
+}
+
 pub struct IpcState {
     pub port: u16,
     #[allow(dead_code)]
     pub registry: Arc<ipc::AgentRegistry>,
+    pub pty: Arc<pty::PtyManager>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -109,13 +143,22 @@ pub fn run() {
     std::mem::forget(server); // live for app lifetime
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(IpcState { port, registry })
+        .setup(move |app| {
+            let pty = pty::PtyManager::new(app.handle().clone(), port);
+            ipc::set_pty(pty.clone());
+            app.manage(IpcState { port, registry: registry.clone(), pty });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             ipc_port,
             workspace_load,
             workspace_save,
             workspace_set_active,
+            pty_spawn,
+            pty_write,
+            pty_resize,
+            pty_kill,
             manifest::manifest_load,
             manifest::manifest_save,
             manifest::sidebar_load,

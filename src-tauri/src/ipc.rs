@@ -12,6 +12,12 @@ use std::thread;
 
 pub const COMMANDS: &str = "list ask check note portal recruit dismiss connect role preset debug";
 
+static PTY: std::sync::OnceLock<Arc<crate::pty::PtyManager>> = std::sync::OnceLock::new();
+
+pub fn set_pty(pty: Arc<crate::pty::PtyManager>) {
+    let _ = PTY.set(pty);
+}
+
 /// Shared app state visible to CLI handlers (terminals registry + active workspace).
 #[derive(Debug, Default)]
 pub struct AgentRegistry {
@@ -46,23 +52,40 @@ pub fn route(args: &[String], terminal_id: Option<&str>, registry: &AgentRegistr
             )
         }
         "ask" => {
-            if terminal_id.is_none() {
+            let Some(tid) = terminal_id else {
                 return "error: missing terminal ID".to_string();
-            }
+            };
             if args.len() < 3 {
                 return "error: usage: omaestri ask \"Agent\" \"prompt\"".to_string();
             }
-            // F2 stub: no live PTY yet — F4 wires real injection.
-            format!("error: ask not connected (no live terminal '{}' in this build)", args[1])
+            match PTY.get() {
+                Some(pty) => match crate::pty::match_terminal(registry, pty, tid, &args[1]) {
+                    Some(target) => match pty.ask(&target, &args[2]) {
+                        Ok(out) => out,
+                        Err(e) => e,
+                    },
+                    None => format!("error: agent '{}' not found", args[1]),
+                },
+                None => format!("error: ask not connected (no live terminal '{}' in this build)", args[1]),
+            }
         }
         "check" => {
-            if terminal_id.is_none() {
+            let Some(tid) = terminal_id else {
                 return "error: missing terminal ID".to_string();
-            }
+            };
             if args.len() < 2 {
                 return "error: usage: omaestri check \"Agent\" [lines]".to_string();
             }
-            format!("error: check not connected (no live terminal '{}' in this build)", args[1])
+            let lines = args.get(2).and_then(|l| l.parse().ok()).unwrap_or(20);
+            match PTY.get() {
+                Some(pty) => match crate::pty::match_terminal(registry, pty, tid, &args[1]) {
+                    Some(target) => pty
+                        .recent_output(&target, lines)
+                        .unwrap_or_else(|| format!("error: no output for '{}'", args[1])),
+                    None => format!("error: agent '{}' not found", args[1]),
+                },
+                None => format!("error: check not connected (no live terminal '{}' in this build)", args[1]),
+            }
         }
         "note" => handle_note(args, terminal_id, registry),
         "portal" => "error: portal not connected (no portals in this build)".to_string(),
@@ -378,6 +401,9 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::TcpStream;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn post(port: u16, args: &[&str], tid: Option<&str>, version: &str) -> (String, String) {
         let body = serde_json::json!({"args": args}).to_string();
@@ -400,6 +426,7 @@ mod tests {
 
     #[test]
     fn cli_wire_protocol() {
+        let _lock = ENV_LOCK.lock().unwrap();
         let _d = std::env::temp_dir().join("omw-ipc-test-wire");
         unsafe { std::env::set_var("OPEN_MAESTRI_DATA_DIR", &_d) };
         let reg = AgentRegistry::new();

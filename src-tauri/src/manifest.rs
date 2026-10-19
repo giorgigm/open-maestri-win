@@ -168,6 +168,9 @@ pub fn appstate_save(state: AppStateData) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn test_dir(name: &str) {
         let dir = std::env::temp_dir().join(format!("omw-manifest-test-{name}"));
@@ -177,6 +180,7 @@ mod tests {
 
     #[test]
     fn defaults_match_swift_init() {
+        let _lock = ENV_LOCK.lock().unwrap();
         test_dir("defaults");
         let m: WorkspaceManifest = load_or_default(&manifest_path()).unwrap();
         assert_eq!(m.schema_version, 1);
@@ -193,6 +197,7 @@ mod tests {
 
     #[test]
     fn roundtrip_and_legacy_tolerance() {
+        let _lock = ENV_LOCK.lock().unwrap();
         test_dir("roundtrip");
         // legacy entry without `color` -> "blue" (mirrors Swift decodeIfPresent)
         let legacy = serde_json::json!([{
