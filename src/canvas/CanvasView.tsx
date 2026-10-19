@@ -4,6 +4,7 @@ import {
   nodeDisplayName,
   nodeVariant,
   type CanvasNode,
+  type FileTreeContent,
   type FrameRect,
   type PortalContent,
   type StickyNoteContent,
@@ -16,6 +17,7 @@ import { snapRect, type Guide } from "./snap";
 import TerminalNode from "../nodes/TerminalNode";
 import NoteNode from "../nodes/NoteNode";
 import PortalNode from "../nodes/PortalNode";
+import FileTreeNode from "../nodes/FileTreeNode";
 import { BUILTIN_ROLES } from "../lib/presets";
 import type { ToolId } from "../lib/manifest";
 
@@ -77,6 +79,7 @@ export interface CanvasViewProps {
   onToggleNotePreview: (id: string) => void;
   onRenameNote: (id: string, name: string) => void;
   onNavigatePortal: (id: string, url: string) => void;
+  onFileTreeRoot: (id: string, root: string) => void;
   onNodeContextMenu: (e: React.MouseEvent, nodeId: string) => void;
   onCanvasContextMenu: (e: React.MouseEvent) => void;
   onRopeContextMenu: (e: React.MouseEvent, connId: string) => void;
@@ -98,6 +101,7 @@ export default function CanvasView({
   onToggleNotePreview,
   onRenameNote,
   onNavigatePortal,
+  onFileTreeRoot,
   onNodeContextMenu,
   onCanvasContextMenu,
   onRopeContextMenu,
@@ -506,6 +510,11 @@ export default function CanvasView({
                 content={(n.content as { portal: { _0: PortalContent } }).portal._0}
                 onNavigate={(url) => onNavigatePortal(n.id, url)}
               />
+            ) : variant === "fileTree" ? (
+              <FileTreeNode
+                content={(n.content as { fileTree: { _0: FileTreeContent } }).fileTree._0}
+                onRootChange={(root) => onFileTreeRoot(n.id, root)}
+              />
             ) : (
               <>
                 <div className="node-header">{nodeDisplayName(n.id, n.content)}</div>
@@ -513,7 +522,6 @@ export default function CanvasView({
                   {variant === "text" && (
                     <span>{(n.content as { text: { _0: { text: string } } }).text._0.text}</span>
                   )}
-                  {variant === "fileTree" && <div className="note-placeholder">file tree…</div>}
                 </div>
               </>
             )}

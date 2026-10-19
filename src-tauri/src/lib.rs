@@ -1,4 +1,5 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+pub mod fs;
 pub mod ipc;
 pub mod manifest;
 pub mod pty;
@@ -196,6 +197,11 @@ pub fn run() {
             note_load,
             note_save,
             note_delete,
+            fs::fs_list,
+            fs::git_status,
+            fs::git_branch,
+            fs::git_diff,
+            fs::git_commit,
             manifest::manifest_load,
             manifest::manifest_save,
             manifest::sidebar_load,

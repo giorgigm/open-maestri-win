@@ -289,6 +289,35 @@
 .portal-empty { padding: 20px; color: var(--om-muted); font-size: 12px; text-align: center; }
 .portal-fallback { padding: 20px; text-align: center; font-size: 13px; }
 .portal-fallback button { margin: 8px; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--om-border); cursor: pointer; }
+.ft-node { display: flex; flex-direction: column; height: 100%; background: white; border-radius: 8px; overflow: hidden; font-size: 12px; }
+.ft-bar { display: flex; gap: 4px; padding: 5px 6px; background: #f4f4f5; border-bottom: 1px solid var(--om-border); }
+.ft-bar button { border: 1px solid var(--om-border); background: white; border-radius: 6px; padding: 2px 8px; cursor: pointer; }
+.ft-bar button.on { background: #18181b; color: white; }
+.ft-bar input { flex: 1; border: 1px solid var(--om-border); border-radius: 6px; padding: 3px 8px; font-size: 12px; min-width: 60px; }
+.ft-branch { white-space: nowrap; }
+.ft-main { flex: 1; display: flex; min-height: 0; }
+.ft-list { flex: 1; overflow-y: auto; padding: 4px; }
+.ft-row { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 5px; cursor: pointer; white-space: nowrap; }
+.ft-row:hover { background: #f4f4f5; }
+.ft-caret { color: var(--om-muted); width: 12px; }
+.ft-name { overflow: hidden; text-overflow: ellipsis; }
+.ft-badge { margin-left: auto; font-size: 10px; font-family: Consolas, monospace; background: #fef3c7; border-radius: 4px; padding: 0 5px; }
+.ft-badge.ft-M { background: #fef3c7; color: #92400e; }
+.ft-badge.ft-A { background: #dcfce7; color: #166534; }
+.ft-badge.ft-D { background: #fee2e2; color: #991b1b; }
+.ft-grid { display: grid; grid-template-columns: repeat(auto-fill, 64px); gap: 6px; }
+.ft-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px; border-radius: 6px; cursor: pointer; }
+.ft-cell:hover { background: #f4f4f5; }
+.ft-cell-icon { font-size: 20px; }
+.ft-cell-name { font-size: 10px; text-align: center; word-break: break-word; max-height: 28px; overflow: hidden; }
+.ft-err { color: var(--om-danger); padding: 6px; }
+.ft-diff { width: 45%; border-left: 1px solid var(--om-border); display: flex; flex-direction: column; min-width: 0; }
+.ft-diff-head { display: flex; justify-content: space-between; padding: 4px 8px; background: #f4f4f5; font-weight: 600; }
+.ft-diff pre { flex: 1; overflow: auto; margin: 0; padding: 8px; font-size: 11px; font-family: Consolas, monospace; }
+.ft-commit { display: flex; gap: 4px; padding: 6px; border-top: 1px solid var(--om-border); }
+.ft-commit input { flex: 1; border: 1px solid var(--om-border); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
+.ft-commit button { background: #2563eb; color: white; border: none; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.ft-commit button:disabled { opacity: 0.4; }
 .term-body { flex: 1; padding: 0; overflow: hidden; background: #0c0c0e; min-height: 60px; }
 .term-xterm { flex: 1; min-height: 60px; overflow: hidden; }
 .term-xterm .xterm { height: 100%; padding: 4px 6px; }

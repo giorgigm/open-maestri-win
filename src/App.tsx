@@ -17,6 +17,7 @@ import {
   rectToFrameArray,
   nodeVariant,
   type CanvasNode,
+  type FileTreeContent,
   type FrameRect,
   type PortalContent,
   type StickyNoteContent,
@@ -429,8 +430,27 @@ export default function App() {
     setTool("select");
   };
 
-  const navigatePortal = (nodeId: string, url: string) => {
+  const onFileTreeRoot = (nodeId: string, root: string) => {
     const d = docRef.current;
+    if (!d) return;
+    setDoc({
+      ...d,
+      payload: {
+        ...d.payload,
+        nodes: d.payload.nodes.map((n) => {
+          if (n.id !== nodeId || nodeVariant(n.content) !== "fileTree") return n;
+          const c = (n.content as { fileTree: { _0: FileTreeContent } }).fileTree._0;
+          return {
+            ...n,
+            content: { fileTree: { _0: { ...c, rootPath: root } } },
+            lastModifiedAt: new Date().toISOString(),
+          };
+        }),
+      },
+    });
+  };
+
+  const navigatePortal = (nodeId: string, url: string) => {    const d = docRef.current;
     if (!d) return;
     setDoc({
       ...d,
@@ -844,6 +864,7 @@ export default function App() {
           onToggleNotePreview={toggleNotePreview}
           onRenameNote={renameNote}
           onNavigatePortal={navigatePortal}
+          onFileTreeRoot={onFileTreeRoot}
           onConnectNodes={createConnection}
           connectSource={connectSource}
           setConnectSource={setConnectSource}
