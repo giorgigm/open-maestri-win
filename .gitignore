@@ -18,6 +18,9 @@ src-tauri/gen/
 sidecar/omaestri/target/
 **/*.rs.bk
 
+# Release binaries (distributed via GitHub Releases, not git)
+dist-release/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
