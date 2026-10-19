@@ -77,6 +77,9 @@ export interface CanvasViewProps {
   onNodeContextMenu: (e: React.MouseEvent, nodeId: string) => void;
   onCanvasContextMenu: (e: React.MouseEvent) => void;
   onRopeContextMenu: (e: React.MouseEvent, connId: string) => void;
+  onConnectNodes: (fromId: string, toId: string) => string | null;
+  connectSource: string | null;
+  setConnectSource: (id: string | null) => void;
 }
 
 export default function CanvasView({
@@ -85,6 +88,7 @@ export default function CanvasView({
   setViewport,
   updateNodeFrame,
   tool,
+  setTool,
   terminalBadges,
   onAddNodeAt,
   onDuplicateNode,
@@ -93,11 +97,15 @@ export default function CanvasView({
   onNodeContextMenu,
   onCanvasContextMenu,
   onRopeContextMenu,
+  onConnectNodes,
+  connectSource,
+  setConnectSource,
 }: CanvasViewProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [ropes, setRopes] = useState<RopeState[]>([]);
   const [guides, setGuides] = useState<Guide[]>([]);
   const [rubber, setRubber] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
   const docRef = useRef(doc);
   const viewRef = useRef(viewport);
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
@@ -126,6 +134,8 @@ export default function CanvasView({
       ...doc.payload.connections.map((c) => ({ id: c.id, a: c.terminalIdA, b: c.terminalIdB })),
       ...doc.payload.noteConnections.map((c) => ({ id: c.id, a: c.terminalId, b: c.noteNodeId })),
       ...doc.payload.portalConnections.map((c) => ({ id: c.id, a: c.terminalId, b: c.portalNodeId })),
+      ...doc.payload.noteToNoteConnections.map((c) => ({ id: c.id, a: c.noteNodeIdA, b: c.noteNodeIdB })),
+      ...doc.payload.portalToPortalConnections.map((c) => ({ id: c.id, a: c.portalIdA, b: c.portalIdB })),
     ];
     const byId = new Map(doc.payload.nodes.map((n) => [n.id, n]));
     const termByContent = new Map<string, CanvasNode>();
@@ -226,6 +236,11 @@ export default function CanvasView({
     if (placeRef.current) {
       const p = placeRef.current;
       setRubber({ x0: p.sx, y0: p.sy, x1: e.clientX, y1: e.clientY });
+      return;
+    }
+    if (connectSource) {
+      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+      setGhost({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     }
   };
 
@@ -263,7 +278,12 @@ export default function CanvasView({
     };
     const up = (e: KeyboardEvent) => {
       if (e.code === "Space") spaceRef.current = false;
-      if (e.key === "Escape") setSelected(new Set());
+      if (e.key === "Escape") {
+        setSelected(new Set());
+        setConnectSource(null);
+        setGhost(null);
+        setTool("select");
+      }
     };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
@@ -271,6 +291,7 @@ export default function CanvasView({
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---- node drag (multi + Ctrl-duplicate + Alt-snap) ------------------------------
@@ -358,11 +379,19 @@ export default function CanvasView({
 
   return (
     <div
-      className={`canvas-root ${tool === "connection" ? "connect-mode" : ""}`}
+      className={`canvas-root ${tool === "connection" || connectSource ? "connect-mode" : ""}`}
       onWheel={onWheel}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
+      onClick={(e) => {
+        // click empty canvas cancels connect mode (mirrors Mac)
+        if (e.target === e.currentTarget && connectSource) {
+          setConnectSource(null);
+          setGhost(null);
+          setTool("select");
+        }
+      }}
       onContextMenu={(e) => {
         if (e.target === e.currentTarget) {
           e.preventDefault();
@@ -385,6 +414,13 @@ export default function CanvasView({
             <path d={r.d} className={`rope rope-${r.status}`} />
           </g>
         ))}
+        {ghost && connectSource && (() => {
+          const src = docRef.current.payload.nodes.find((x) => x.id === connectSource);
+          if (!src) return null;
+          const c = nodeCenter(frameArrayToRect(src.frame));
+          const s = canvasToScreen(c.x, c.y, viewRef.current);
+          return <line x1={s.x} y1={s.y} x2={ghost.x} y2={ghost.y} className="om-ghost" />;
+        })()}
         {guides.map((g, i) => {
           const v = viewRef.current;
           const a = canvasToScreen(g.orientation === "v" ? g.pos : g.from, g.orientation === "v" ? g.from : g.pos, v);
@@ -421,6 +457,21 @@ export default function CanvasView({
             onMouseDown={(e) => {
               if (e.button === 2) return;
               e.stopPropagation();
+              // connect mode: click completes the pair
+              if (connectSource) {
+                if (connectSource !== n.id) {
+                  onConnectNodes(connectSource, n.id);
+                }
+                setConnectSource(null);
+                setGhost(null);
+                setTool("select");
+                return;
+              }
+              if (tool === "connection") {
+                setConnectSource(n.id);
+                setSelected(new Set([n.id]));
+                return;
+              }
               startNodeDrag(e, n.id);
             }}
             onContextMenu={(e) => {

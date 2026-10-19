@@ -30,6 +30,7 @@ import {
   type WorkspaceEntry,
   type WorkspaceManifest,
 } from "./lib/manifest";
+import { hasDup, pairKind } from "./lib/connections";
 
 const AUTOSAVE_MS = 30_000;
 
@@ -331,8 +332,72 @@ export default function App() {
         connections: d.payload.connections.filter((c) => c.id !== connId),
         noteConnections: d.payload.noteConnections.filter((c) => c.id !== connId),
         portalConnections: d.payload.portalConnections.filter((c) => c.id !== connId),
+        noteToNoteConnections: d.payload.noteToNoteConnections.filter((c) => c.id !== connId),
+        portalToPortalConnections: d.payload.portalToPortalConnections.filter((c) => c.id !== connId),
       },
     });
+  };
+
+  // ---- connections (5 Mac types) -------------------------------------------------------
+  const [connectSource, setConnectSource] = useState<string | null>(null);
+
+  const terminalKeyOf = (nodeId: string): string | null => {
+    const d = docRef.current;
+    const n = d?.payload.nodes.find((x) => x.id === nodeId);
+    if (!n || nodeVariant(n.content) !== "terminal") return null;
+    return (n.content as { terminal: { _0: TerminalContent } }).terminal._0.id;
+  };
+
+  const createConnection = (fromId: string, toId: string): string | null => {
+    const d = docRef.current;
+    if (!d || fromId === toId) return null;
+    const a = d.payload.nodes.find((x) => x.id === fromId);
+    const b = d.payload.nodes.find((x) => x.id === toId);
+    if (!a || !b) return null;
+    const kind = pairKind(nodeVariant(a.content), nodeVariant(b.content));
+    if (!kind) {
+      setStatus("cannot connect these node types");
+      return null;
+    }
+    const now = new Date().toISOString();
+    const ropePoints: number[][] = Array.from({ length: 21 }, () => [0, 0]);
+    const id = crypto.randomUUID();
+    const tA = terminalKeyOf(fromId);
+    const tB = terminalKeyOf(toId);
+    if (kind === "terminal") {
+      if (!tA || !tB) return null;
+      if (hasDup(d.payload.connections.map((c) => ({ a: c.terminalIdA, b: c.terminalIdB })), tA, tB)) return null;
+      setDoc({ ...d, payload: { ...d.payload, connections: [...d.payload.connections, { id, createdAt: now, terminalIdA: tA, terminalIdB: tB, ropePoints }] } });
+    } else if (kind === "note") {
+      const t = tA ?? tB;
+      const n = nodeVariant(a.content) === "stickyNote" ? fromId : toId;
+      if (!t) return null;
+      if (hasDup(d.payload.noteConnections.map((c) => ({ a: c.terminalId, b: c.noteNodeId })), t, n)) return null;
+      setDoc({ ...d, payload: { ...d.payload, noteConnections: [...d.payload.noteConnections, { id, createdAt: now, terminalId: t, noteNodeId: n, ropePoints }] } });
+    } else if (kind === "portal") {
+      const t = tA ?? tB;
+      const p = nodeVariant(a.content) === "portal" ? fromId : toId;
+      if (!t) return null;
+      if (hasDup(d.payload.portalConnections.map((c) => ({ a: c.terminalId, b: c.portalNodeId })), t, p)) return null;
+      setDoc({ ...d, payload: { ...d.payload, portalConnections: [...d.payload.portalConnections, { id, createdAt: now, terminalId: t, portalNodeId: p, ropePoints }] } });
+    } else if (kind === "noteToNote") {
+      if (hasDup(d.payload.noteToNoteConnections.map((c) => ({ a: c.noteNodeIdA, b: c.noteNodeIdB })), fromId, toId)) return null;
+      setDoc({ ...d, payload: { ...d.payload, noteToNoteConnections: [...d.payload.noteToNoteConnections, { id, createdAt: now, noteNodeIdA: fromId, noteNodeIdB: toId, ropePoints }] } });
+    } else {
+      if (hasDup(d.payload.portalToPortalConnections.map((c) => ({ a: c.portalIdA, b: c.portalIdB })), fromId, toId)) return null;
+      setDoc({ ...d, payload: { ...d.payload, portalToPortalConnections: [...d.payload.portalToPortalConnections, { id, createdAt: now, portalIdA: fromId, portalIdB: toId, ropePoints }] } });
+    }
+    return id;
+  };
+
+  const enterConnectMode = () => {
+    const sel = selection();
+    if (sel.length === 0) {
+      setStatus("select a terminal, note or portal first, then L");
+      return;
+    }
+    setConnectSource(sel[0]);
+    setTool("connection");
   };
 
   // pending terminal placement: drag-to-place captured rect, modal confirms spec
@@ -438,8 +503,42 @@ export default function App() {
       payload: {
         ...d.payload,
         nodes: d.payload.nodes.filter((n) => !gone.has(n.id)),
+        // disconnectAll: drop every connection touching a deleted node (Mac parity)
+        connections: d.payload.connections.filter((c) => {
+          const a = nodeIdOfTerminal(c.terminalIdA);
+          const b = nodeIdOfTerminal(c.terminalIdB);
+          return !(gone.has(c.terminalIdA) || gone.has(c.terminalIdB) || (a && gone.has(a)) || (b && gone.has(b)));
+        }),
+        noteConnections: d.payload.noteConnections.filter(
+          (c) => !gone.has(c.noteNodeId) && !gone.has(c.terminalId) && !goneTerminal(c.terminalId, gone),
+        ),
+        portalConnections: d.payload.portalConnections.filter(
+          (c) => !gone.has(c.portalNodeId) && !gone.has(c.terminalId) && !goneTerminal(c.terminalId, gone),
+        ),
+        noteToNoteConnections: d.payload.noteToNoteConnections.filter(
+          (c) => !gone.has(c.noteNodeIdA) && !gone.has(c.noteNodeIdB),
+        ),
+        portalToPortalConnections: d.payload.portalToPortalConnections.filter(
+          (c) => !gone.has(c.portalIdA) && !gone.has(c.portalIdB),
+        ),
       },
     });
+  };
+
+  const nodeIdOfTerminal = (terminalKey: string): string | null => {
+    const d = docRef.current;
+    const n = d?.payload.nodes.find(
+      (x) =>
+        x.id === terminalKey ||
+        (nodeVariant(x.content) === "terminal" &&
+          (x.content as { terminal: { _0: TerminalContent } }).terminal._0.id === terminalKey),
+    );
+    return n ? n.id : null;
+  };
+
+  const goneTerminal = (terminalKey: string, gone: Set<string>): boolean => {
+    const nid = nodeIdOfTerminal(terminalKey);
+    return nid != null && gone.has(nid);
   };
 
   const deleteNoteFile = (fileName: string) => {
@@ -543,7 +642,11 @@ export default function App() {
   const onMenuPick = (id: string, nodeId: string | null) => {
     if (id === "delete" && nodeId) deleteNodes([nodeId]);
     else if (id === "duplicate" && nodeId) duplicateNode(nodeId);
-    else if (id === "connect") setTool("connection");
+    else if (id === "connect" && nodeId) {
+      const sel = selection();
+      setConnectSource(sel.includes(nodeId) ? nodeId : nodeId);
+      setTool("connection");
+    }
     else if (id === "maestro" && nodeId) toggleMaestro(nodeId);
     else if (id === "role" && nodeId) {
       setStatus("Assign Role: use o terminal + tab Roles do modal (settings em breve)");
@@ -605,7 +708,7 @@ export default function App() {
         return;
       }
       if (!e.ctrlKey && !e.metaKey && (e.key === "l" || e.key === "L")) {
-        if (selection().length > 0) setTool("connection");
+        enterConnectMode();
         return;
       }
       if (!e.ctrlKey && !e.metaKey && (e.key === "p" || e.key === "P")) {
@@ -691,6 +794,9 @@ export default function App() {
           terminalBadges={terminalBadges}
           onToggleNotePreview={toggleNotePreview}
           onRenameNote={renameNote}
+          onConnectNodes={createConnection}
+          connectSource={connectSource}
+          setConnectSource={setConnectSource}
           onDuplicateNode={duplicateNodeCb}
           onDeleteConnection={deleteConnection}
           onNodeContextMenu={(e, nodeId) =>

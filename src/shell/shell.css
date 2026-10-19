@@ -229,6 +229,13 @@
   padding: 4px 8px;
 }
 
+.om-ghost {
+  stroke: #3b82f6;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  pointer-events: none;
+}
+
 .connect-mode { cursor: crosshair !important; }
 
 .om-preset-row { display: flex; gap: 8px; }
